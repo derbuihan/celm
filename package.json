@@ -4,9 +4,9 @@
     "description": "",
     "main": "index.js",
     "scripts": {
-        "make": "elm make src/Main.elm --output=src/main.js",
+        "make": "elm make src/Main.elm --output=src/main.js --optimize",
         "start": "node src/app.js",
-        "test": "echo \"Error: no test specified\" && exit 1"
+        "test": "npm run make; echo '\n --- \n'; bash test.sh"
     },
     "keywords": [],
     "author": "",

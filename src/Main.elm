@@ -3,12 +3,9 @@ port module Main exposing (main)
 import Platform exposing (Program)
 
 
-type alias InputType = Int
-type alias OutputType = Int
+port get : (String -> msg) -> Sub msg
 
-port get : (InputType -> msg) -> Sub msg
-
-port put : OutputType -> Cmd msg
+port put : String -> Cmd msg
 
 
 main : Program Flags Model Msg
@@ -24,7 +21,7 @@ type alias Model =
 
 
 type Msg
-    = Input Int
+    = Input String
 
 
 type alias Flags =
@@ -45,10 +42,12 @@ subscriptions : Model -> Sub Msg
 subscriptions _ =
     get Input
 
-transform : InputType -> OutputType
-transform k =
-    if modBy 2 k == 0 then
-        k // 2
-    else
-        3*k+ 1
-
+transform : String -> String
+transform s = """
+    .text
+    .globl _main
+    .p2align 2
+_main:
+""" ++ "    mov x0, " ++ s ++ """
+    ret
+"""
