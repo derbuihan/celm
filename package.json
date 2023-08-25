@@ -1,0 +1,19 @@
+{
+    "name": "elm-parser-test",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.js",
+    "scripts": {
+        "make": "elm make src/Main.elm --output=src/main.js",
+        "start": "node src/app.js",
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "devDependencies": {
+        "elm": "^0.19.1-5",
+        "elm-format": "^0.8.7",
+        "elm-test": "^0.19.1-revision12"
+    }
+}
