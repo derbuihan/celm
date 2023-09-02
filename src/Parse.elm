@@ -7,6 +7,7 @@ import Parser
         , Parser
         , Step(..)
         , andThen
+        , chompWhile
         , int
         , lazy
         , oneOf
@@ -37,8 +38,7 @@ expr =
                 , succeed left
                 ]
     in
-    term
-        |> andThen exprHelp
+    term |> andThen exprHelp
 
 
 
@@ -73,12 +73,23 @@ primary : Parser Expr
 primary =
     oneOf
         [ succeed Integer
+            |. spaces
             |= int
+            |. spaces
         , succeed identity
+            |. spaces
             |. symbol "("
+            |. spaces
             |= lazy (\_ -> expr)
+            |. spaces
             |. symbol ")"
+            |. spaces
         ]
+
+
+spaces : Parser ()
+spaces =
+    chompWhile (\c -> c == ' ' || c == '\t')
 
 
 parse : String -> Result (List Parser.DeadEnd) Expr

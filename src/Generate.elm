@@ -16,6 +16,9 @@ pop reg =
 gen_expr : Expr -> String
 gen_expr e =
     case e of
+        Integer i ->
+            "  mov x0, " ++ String.fromInt i ++ "\n"
+
         Plus x y ->
             gen_expr y ++ push ++ gen_expr x ++ pop "x1" ++ "  add x0, x0, x1\n"
 
@@ -27,9 +30,6 @@ gen_expr e =
 
         Div x y ->
             gen_expr y ++ push ++ gen_expr x ++ pop "x1" ++ "  sdiv x0, x0, x1\n"
-
-        Integer i ->
-            "  mov x0, " ++ String.fromInt i ++ "\n"
 
 
 generate : Expr -> String
