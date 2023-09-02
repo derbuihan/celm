@@ -3,6 +3,7 @@
     "elmLS.elmFormatPath": "./node_modules/.bin/elm-format",
     "elmLS.elmTestPath": "./node_modules/.bin/elm-test",
     "[elm]": {
+        "editor.defaultFormatter": "elmTooling.elm-ls-vscode",
         "editor.formatOnSave": true,
         "editor.rulers": [80]
     },

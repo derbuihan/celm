@@ -4,8 +4,8 @@
     "description": "",
     "main": "index.js",
     "scripts": {
-        "make": "elm make src/Main.elm --output=src/main.js --optimize",
-        "start": "node src/app.js",
+        "make": "elm make src/Main.elm --output=src/main.js  --debug",
+        "start": "npm run make; node src/app.js",
         "test": "npm run make; echo '\n --- \n'; bash test.sh"
     },
     "keywords": [],

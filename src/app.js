@@ -8,11 +8,9 @@ if (args.length < 1) {
 }
 
 var input = args[0];
-// console.log("\n   Input: ", input);
-
 main.ports.get.send(input);
 main.ports.put.subscribe(function (data) {
-    // console.log("   Output: " + data + "\n");
+    console.log(data);
 
     var fs = require("fs");
     fs.writeFileSync("output/tmp.s", data);
