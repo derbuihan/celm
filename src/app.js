@@ -10,8 +10,10 @@ if (args.length < 1) {
 var input = args[0];
 main.ports.get.send(input);
 main.ports.put.subscribe(function (data) {
-    console.log(data);
-
     var fs = require("fs");
     fs.writeFileSync("output/tmp.s", data);
+});
+main.ports.debug.subscribe(function (data) {
+    console.log(input);
+    console.log(data);
 });

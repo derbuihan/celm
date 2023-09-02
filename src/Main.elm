@@ -11,6 +11,9 @@ port get : (String -> msg) -> Sub msg
 port put : String -> Cmd msg
 
 
+port debug : String -> Cmd msg
+
+
 main : Program Flags Model Msg
 main =
     Platform.worker
@@ -41,7 +44,12 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         Input input ->
-            ( model, put (compile input) )
+            ( model
+            , Cmd.batch
+                [ put (compile input)
+                , debug (Debug.toString (parse input))
+                ]
+            )
 
 
 subscriptions : Model -> Sub Msg
@@ -60,4 +68,4 @@ compile p =
             generate x
 
         Err x ->
-            Debug.toString x ++ "\n" ++ Debug.toString ast
+            Debug.toString x
