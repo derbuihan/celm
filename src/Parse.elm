@@ -18,7 +18,7 @@ import Type exposing (Expr(..))
 
 
 
--- expr = term ("+" term | "-" term)*
+-- expr = mul ("+" mul | "-" mul)*
 
 
 expr : Parser Expr
@@ -27,42 +27,57 @@ expr =
         exprHelp : Expr -> Parser Expr
         exprHelp left =
             oneOf
-                [ succeed (Plus left)
+                [ succeed (Add left)
                     |. symbol "+"
-                    |= lazy (\_ -> term)
+                    |= lazy (\_ -> mul)
                     |> andThen exprHelp
-                , succeed (Minus left)
+                , succeed (Sub left)
                     |. symbol "-"
-                    |= lazy (\_ -> term)
+                    |= lazy (\_ -> mul)
                     |> andThen exprHelp
                 , succeed left
                 ]
     in
-    term |> andThen exprHelp
+    mul |> andThen exprHelp
 
 
 
--- term = primary ("*" primary | "//" primary)?
+-- mul = unary ("*" unary | "//" unary)?
 
 
-term : Parser Expr
-term =
+mul : Parser Expr
+mul =
     let
-        termHelp : Expr -> Parser Expr
-        termHelp left =
+        mulHelp : Expr -> Parser Expr
+        mulHelp left =
             oneOf
                 [ succeed (Mul left)
                     |. symbol "*"
-                    |= lazy (\_ -> primary)
-                    |> andThen termHelp
+                    |= lazy (\_ -> unary)
+                    |> andThen mulHelp
                 , succeed (Div left)
                     |. symbol "//"
-                    |= lazy (\_ -> primary)
-                    |> andThen termHelp
+                    |= lazy (\_ -> unary)
+                    |> andThen mulHelp
                 , succeed left
                 ]
     in
-    primary |> andThen termHelp
+    unary |> andThen mulHelp
+
+
+
+-- unary = "-"? primary
+
+
+unary : Parser Expr
+unary =
+    oneOf
+        [ succeed Neg
+            |. symbol "-"
+            |= primary
+        , succeed identity
+            |= primary
+        ]
 
 
 
@@ -72,7 +87,7 @@ term =
 primary : Parser Expr
 primary =
     oneOf
-        [ succeed Integer
+        [ succeed Int
             |. spaces
             |= int
             |. spaces

@@ -16,13 +16,16 @@ pop reg =
 gen_expr : Expr -> String
 gen_expr e =
     case e of
-        Integer i ->
+        Int i ->
             "  mov x0, " ++ String.fromInt i ++ "\n"
 
-        Plus x y ->
+        Neg x ->
+            gen_expr x ++ "  neg x0, x0\n"
+
+        Add x y ->
             gen_expr y ++ push ++ gen_expr x ++ pop "x1" ++ "  add x0, x0, x1\n"
 
-        Minus x y ->
+        Sub x y ->
             gen_expr y ++ push ++ gen_expr x ++ pop "x1" ++ "  sub x0, x0, x1\n"
 
         Mul x y ->
