@@ -17,49 +17,56 @@ import Type exposing (Expr(..))
 
 
 
--- expr = term (PLUS term | MINUS term)*
+-- expr = term ("+" term | "-" term)*
 
 
 expr : Parser Expr
 expr =
+    let
+        exprHelp : Expr -> Parser Expr
+        exprHelp left =
+            oneOf
+                [ succeed (Plus left)
+                    |. symbol "+"
+                    |= lazy (\_ -> term)
+                    |> andThen exprHelp
+                , succeed (Minus left)
+                    |. symbol "-"
+                    |= lazy (\_ -> term)
+                    |> andThen exprHelp
+                , succeed left
+                ]
+    in
     term
-        |> andThen
-            (\left ->
-                oneOf
-                    [ succeed (\right -> Plus left right)
-                        |. symbol "+"
-                        |= lazy (\_ -> expr)
-                    , succeed (\right -> Minus left right)
-                        |. symbol "-"
-                        |= lazy (\_ -> expr)
-                    , succeed left
-                    ]
-            )
+        |> andThen exprHelp
 
 
 
--- term = primary (MUL primary | DIV primary)*
+-- term = primary ("*" primary | "//" primary)?
 
 
 term : Parser Expr
 term =
-    primary
-        |> andThen
-            (\left ->
-                oneOf
-                    [ succeed (Mul left)
-                        |. symbol "*"
-                        |= lazy (\_ -> term)
-                    , succeed (Div left)
-                        |. symbol "//"
-                        |= lazy (\_ -> term)
-                    , succeed left
-                    ]
-            )
+    let
+        termHelp : Expr -> Parser Expr
+        termHelp left =
+            oneOf
+                [ succeed (Mul left)
+                    |. symbol "*"
+                    |= lazy (\_ -> primary)
+                    |> andThen termHelp
+                , succeed (Div left)
+                    |. symbol "//"
+                    |= lazy (\_ -> primary)
+                    |> andThen termHelp
+                , succeed left
+                ]
+    in
+    primary |> andThen termHelp
 
 
 
--- primary = INT | "(" expr ")"
+-- primary = int | "(" expr ")"
 
 
 primary : Parser Expr
