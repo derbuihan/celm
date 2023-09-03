@@ -1,12 +1,13 @@
 {
-    "name": "elm-parser-test",
+    "name": "celm",
     "version": "1.0.0",
     "description": "",
     "main": "index.js",
     "scripts": {
-        "make": "elm make src/Main.elm --output=src/main.js  --debug",
-        "start": "npm run make; node src/app.js",
-        "test": "npm run make; echo '\n --- \n'; bash test.sh"
+        "build": "npm run clean;  elm make src/Main.elm --output=output/main.js --debug; echo '\n --- \n';",
+        "compile": "npm run build; node src/app.js",
+        "test": "npm run build; bash test.sh",
+        "clean": "rm -rf elm-stuff output"
     },
     "keywords": [],
     "author": "",

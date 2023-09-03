@@ -42,7 +42,7 @@ expr =
 
 
 
--- mul = unary ("*" unary | "//" unary)?
+-- mul = unary ("*" unary | "//" unary)*
 
 
 mul : Parser Expr

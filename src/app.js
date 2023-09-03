@@ -1,4 +1,4 @@
-var Elm = require("./main").Elm;
+var Elm = require("../output/main").Elm;
 var main = Elm.Main.init();
 
 var args = process.argv.slice(2);
