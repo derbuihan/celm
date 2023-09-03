@@ -1,19 +1,6 @@
 module Parse exposing (parse)
 
-import Parser
-    exposing
-        ( (|.)
-        , (|=)
-        , Parser
-        , Step(..)
-        , andThen
-        , chompWhile
-        , int
-        , lazy
-        , oneOf
-        , succeed
-        , symbol
-        )
+import Parser exposing ((|.), (|=), Parser, Step(..), andThen, chompWhile, int, lazy, oneOf, succeed, symbol)
 import Type exposing (Expr(..))
 
 
@@ -71,13 +58,15 @@ mul =
 
 unary : Parser Expr
 unary =
-    oneOf
-        [ succeed Neg
-            |. symbol "-"
-            |= primary
-        , succeed identity
-            |= primary
-        ]
+    succeed identity
+        |. spaces
+        |= oneOf
+            [ succeed Neg
+                |. symbol "-"
+                |= primary
+            , succeed identity
+                |= primary
+            ]
 
 
 
@@ -86,20 +75,16 @@ unary =
 
 primary : Parser Expr
 primary =
-    oneOf
-        [ succeed Int
-            |. spaces
-            |= int
-            |. spaces
-        , succeed identity
-            |. spaces
-            |. symbol "("
-            |. spaces
-            |= lazy (\_ -> expr)
-            |. spaces
-            |. symbol ")"
-            |. spaces
-        ]
+    succeed identity
+        |= oneOf
+            [ succeed Int
+                |= int
+            , succeed identity
+                |. symbol "("
+                |= lazy (\_ -> expr)
+                |. symbol ")"
+            ]
+        |. spaces
 
 
 spaces : Parser ()

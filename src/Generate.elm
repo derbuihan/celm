@@ -16,8 +16,8 @@ pop reg =
 gen_expr : Expr -> String
 gen_expr e =
     case e of
-        Int i ->
-            "  mov x0, " ++ String.fromInt i ++ "\n"
+        Int x ->
+            "  mov x0, " ++ String.fromInt x ++ "\n"
 
         Neg x ->
             gen_expr x ++ "  neg x0, x0\n"

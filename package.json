@@ -4,10 +4,11 @@
     "description": "",
     "main": "index.js",
     "scripts": {
-        "build": "npm run clean;  elm make src/Main.elm --output=output/main.js --debug; echo '\n --- \n';",
+        "build": "npm run clean; elm make src/Main.elm --output=output/main.js --debug; echo '\n --- \n';",
         "compile": "npm run build; node src/app.js",
-        "test": "npm run build; bash test.sh",
-        "clean": "rm -rf elm-stuff output"
+        "test": "npm run build; elm-test;",
+        "e2e": "npm run build; ./test.sh",
+        "clean": "rm -rf output"
     },
     "keywords": [],
     "author": "",
