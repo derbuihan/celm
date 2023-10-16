@@ -3,7 +3,9 @@
 Setup
 
 ```bash
+git clone git@github.com:derbuihan/elm-syntax.git
 git clone　git@github.com:derbuihan/celm.git
+cd celm
 npm install
 ```
 
@@ -13,10 +15,18 @@ Build
 npm run build
 ```
 
+Save your code to tmp/tmp.elm
+
+```elm
+module Main exposing (main)
+
+main = 1
+```
+
 Complile
 
 ```bash
-npm run compile '11+22'
+npm run compile "tmp/tmp.elm"
 ```
 
 Test

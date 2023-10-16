@@ -1,45 +1,80 @@
 module Generate exposing (generate)
 
-import Type exposing (Expr(..))
+import Elm.Syntax.Declaration exposing (Declaration(..))
+import Elm.Syntax.Expression exposing (Expression(..), Function, FunctionImplementation)
+import Elm.Syntax.File exposing (File)
+import Elm.Syntax.Node exposing (Node(..))
 
 
-push : String
-push =
-    "  str x0, [sp, -16]!\n"
+genExpr : Expression -> String
+genExpr expr =
+    case expr of
+        Integer val ->
+            "    mov x0, " ++ String.fromInt val ++ "\n"
+
+        _ ->
+            ""
 
 
-pop : String -> String
-pop reg =
-    "  ldr " ++ reg ++ ", [sp], 16\n"
+genNodeExpr : Node Expression -> String
+genNodeExpr node =
+    case node of
+        Node _ expr ->
+            genExpr expr
 
 
-gen_expr : Expr -> String
-gen_expr e =
-    case e of
-        Int x ->
-            "  mov x0, " ++ String.fromInt x ++ "\n"
-
-        Neg x ->
-            gen_expr x ++ "  neg x0, x0\n"
-
-        Add x y ->
-            gen_expr y ++ push ++ gen_expr x ++ pop "x1" ++ "  add x0, x0, x1\n"
-
-        Sub x y ->
-            gen_expr y ++ push ++ gen_expr x ++ pop "x1" ++ "  sub x0, x0, x1\n"
-
-        Mul x y ->
-            gen_expr y ++ push ++ gen_expr x ++ pop "x1" ++ "  mul x0, x0, x1\n"
-
-        Div x y ->
-            gen_expr y ++ push ++ gen_expr x ++ pop "x1" ++ "  sdiv x0, x0, x1\n"
+genNodeFuncImpl : Node FunctionImplementation -> String
+genNodeFuncImpl node =
+    case node of
+        Node _ func ->
+            genNodeExpr func.expression
 
 
-generate : Expr -> String
-generate e =
-    "  .text\n"
-        ++ "  .globl _main\n"
-        ++ "  .p2align 2\n"
-        ++ "_main:\n"
-        ++ gen_expr e
-        ++ "  ret\n"
+genFunc : Function -> String
+genFunc func =
+    let
+        funcImpl =
+            func.declaration
+    in
+    genNodeFuncImpl funcImpl
+
+
+genDeclaration : Declaration -> String
+genDeclaration declaration =
+    case declaration of
+        FunctionDeclaration func ->
+            genFunc func
+
+        Destructuring _ node ->
+            genNodeExpr node
+
+        _ ->
+            ""
+
+
+genNodeDecl : Node Declaration -> String
+genNodeDecl node =
+    case node of
+        Node _ decl ->
+            genDeclaration decl
+
+
+generate : File -> String
+generate ast =
+    let
+        declarations =
+            ast.declarations
+    in
+    """.text
+    .globl _main
+    .align 2
+_main:
+"""
+        ++ (case declarations of
+                [] ->
+                    ""
+
+                x :: _ ->
+                    genNodeDecl x
+           )
+        ++ "    ret\n"

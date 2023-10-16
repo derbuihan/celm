@@ -44,28 +44,24 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         Input input ->
-            ( model
-            , Cmd.batch
-                [ put (compile input)
-                , debug (Debug.toString (parse input))
-                ]
-            )
+            let
+                ast =
+                    parse input
+
+                code =
+                    ast |> Result.map generate
+            in
+            case ( ast, code ) of
+                ( Ok ast_, Ok code_ ) ->
+                    ( model, Cmd.batch [ debug (ast_ |> Debug.toString), put code_ ] )
+
+                ( Ok _, Err err_ ) ->
+                    ( model, debug (err_ |> Debug.toString) )
+
+                ( Err err, _ ) ->
+                    ( model, debug (err |> Debug.toString) )
 
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
     get Input
-
-
-compile : String -> String
-compile p =
-    let
-        ast =
-            parse p
-    in
-    case ast of
-        Ok x ->
-            generate x
-
-        Err x ->
-            Debug.toString x
