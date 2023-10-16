@@ -6,14 +6,52 @@ import Elm.Syntax.File exposing (File)
 import Elm.Syntax.Node exposing (Node(..))
 
 
+push : String
+push =
+    "    str x0, [sp, -16]!"
+
+
+pop : String -> String
+pop reg =
+    "    ldr " ++ reg ++ ", [sp], 16"
+
+
 genExpr : Expression -> String
 genExpr expr =
     case expr of
         Integer val ->
-            "    mov x0, " ++ String.fromInt val ++ "\n"
+            "    mov x0, " ++ String.fromInt val
+
+        OperatorApplication opName _ lhsNode rhsNode ->
+            let
+                lhs =
+                    genNodeExpr lhsNode
+
+                rhs =
+                    genNodeExpr rhsNode
+
+                op =
+                    case opName of
+                        "+" ->
+                            "add"
+
+                        "-" ->
+                            "sub"
+
+                        "*" ->
+                            "mul"
+
+                        "/" ->
+                            "sdiv"
+
+                        _ ->
+                            "; unknown operator"
+            in
+            [ rhs, push, lhs, pop "x1", "    " ++ op ++ " x0, x0, x1" ]
+                |> String.join "\n"
 
         _ ->
-            ""
+            "; unknown expression"
 
 
 genNodeExpr : Node Expression -> String
@@ -39,8 +77,8 @@ genFunc func =
     genNodeFuncImpl funcImpl
 
 
-genDeclaration : Declaration -> String
-genDeclaration declaration =
+genDecl : Declaration -> String
+genDecl declaration =
     case declaration of
         FunctionDeclaration func ->
             genFunc func
@@ -49,32 +87,32 @@ genDeclaration declaration =
             genNodeExpr node
 
         _ ->
-            ""
+            "; unknown declaration"
 
 
 genNodeDecl : Node Declaration -> String
 genNodeDecl node =
     case node of
         Node _ decl ->
-            genDeclaration decl
+            genDecl decl
 
 
 generate : File -> String
 generate ast =
     let
         declarations =
-            ast.declarations
-    in
-    """.text
-    .globl _main
-    .align 2
-_main:
-"""
-        ++ (case declarations of
+            case ast.declarations of
                 [] ->
-                    ""
+                    "; no declarations"
 
                 x :: _ ->
                     genNodeDecl x
-           )
-        ++ "    ret\n"
+    in
+    [ ".text"
+    , "    .globl _main"
+    , "    .align 2"
+    , "_main:"
+    , declarations
+    , "    ret"
+    ]
+        |> String.join "\n"

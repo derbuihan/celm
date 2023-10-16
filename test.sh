@@ -18,15 +18,49 @@ function test() {
     rm ${elm_file}
 }
 
-test 11 <<EOF
-module Main exposing (main)
-main = 11
-EOF
-
-
 test 42 <<EOF
 module Main exposing (main)
 main = 42
+EOF
+
+test 33 <<EOF
+module Main exposing (main)
+main = 11 + 22
+EOF
+
+test 11 <<EOF
+module Main exposing (main)
+main = 22 - 11
+EOF
+
+test 15 <<EOF
+module Main exposing (main)
+main = 1 + 2 + 3 + 4 + 5
+EOF
+
+test 5 <<EOF
+module Main exposing (main)
+main = 10 - 2 - 3
+EOF
+
+test 7 <<EOF
+module Main exposing (main)
+main = 1 + 2 * 3
+EOF
+
+test 5 <<EOF
+module Main exposing (main)
+main = 1 * 2 + 3
+EOF
+
+test 4 <<EOF
+module Main exposing (main)
+main = 12 / 3
+EOF
+
+test 3 <<EOF
+module Main exposing (main)
+main = 1 + 4 * 3 / 6
 EOF
 
 echo "ALL OK"
