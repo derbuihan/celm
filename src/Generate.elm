@@ -40,23 +40,63 @@ genExpr range expr =
 
                 opExpr : Result (List DeadEnd) String
                 opExpr =
-                    (case opName of
+                    case opName of
                         "+" ->
-                            Ok "add"
+                            Ok "    add x0, x0, x1"
 
                         "-" ->
-                            Ok "sub"
+                            Ok "    sub x0, x0, x1"
 
                         "*" ->
-                            Ok "mul"
+                            Ok "    mul x0, x0, x1"
 
                         "/" ->
-                            Ok "sdiv"
+                            Ok "    sdiv x0, x0, x1"
+
+                        "==" ->
+                            [ "    cmp x0, x1"
+                            , "    cset x0, eq"
+                            ]
+                                |> String.join "\n"
+                                |> Ok
+
+                        "/=" ->
+                            [ "    cmp x0, x1"
+                            , "    cset x0, ne"
+                            ]
+                                |> String.join "\n"
+                                |> Ok
+
+                        "<=" ->
+                            [ "    cmp x0, x1"
+                            , "    cset x0, le"
+                            ]
+                                |> String.join "\n"
+                                |> Ok
+
+                        "<" ->
+                            [ "    cmp x0, x1"
+                            , "    cset x0, lt"
+                            ]
+                                |> String.join "\n"
+                                |> Ok
+
+                        ">=" ->
+                            [ "    cmp x0, x1"
+                            , "    cset x0, ge"
+                            ]
+                                |> String.join "\n"
+                                |> Ok
+
+                        ">" ->
+                            [ "    cmp x0, x1"
+                            , "    cset x0, gt"
+                            ]
+                                |> String.join "\n"
+                                |> Ok
 
                         _ ->
                             Err [ DeadEnd range.start.row range.start.column (Problem "Unknown operator") ]
-                    )
-                        |> Result.map (\x -> "    " ++ x ++ " x0, x0, x1")
             in
             Result.map3 (\lhs op rhs -> [ rhs, push, lhs, pop "x1", op ] |> String.join "\n") lhsExpr opExpr rhsExpr
 

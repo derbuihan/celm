@@ -83,5 +83,84 @@ module Main exposing (main)
 main = -11 +22
 EOF
 
+test 1 <<EOF
+module Main exposing (main)
+main = 11 == 11
+EOF
+
+test 0 <<EOF
+module Main exposing (main)
+main = 11 == 22
+EOF
+
+test 0 <<EOF
+module Main exposing (main)
+main = 11 /= 11
+EOF
+
+test 1 <<EOF
+module Main exposing (main)
+main = 11 /= 22
+EOF
+
+test 0 <<EOF
+module Main exposing (main)
+main = 11 < 11
+EOF
+
+test 1 <<EOF
+module Main exposing (main)
+main = 11 < 22
+EOF
+
+test 0 <<EOF
+module Main exposing (main)
+main = 22 < 11
+EOF
+
+test 1 <<EOF
+module Main exposing (main)
+main = 11 <= 11
+EOF
+
+test 1 <<EOF
+module Main exposing (main)
+main = 11 <= 22
+EOF
+
+test 0 <<EOF
+module Main exposing (main)
+main = 22 <= 11
+EOF
+
+test 0 <<EOF
+module Main exposing (main)
+main = 11 > 11
+EOF
+
+test 0 <<EOF
+module Main exposing (main)
+main = 11 > 22
+EOF
+
+test 1 <<EOF
+module Main exposing (main)
+main = 22 > 11
+EOF
+
+test 1 <<EOF
+module Main exposing (main)
+main = 11 >= 11
+EOF
+
+test 0 <<EOF
+module Main exposing (main)
+main = 11 >= 22
+EOF
+
+test 1 <<EOF
+module Main exposing (main)
+main = 22 >= 11
+EOF
 
 echo "ALL OK"
