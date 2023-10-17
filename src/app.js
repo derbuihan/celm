@@ -13,15 +13,21 @@ const input = fs.readFileSync(filename, "utf-8");
 
 main.ports.get.send(input);
 
-main.ports.putAST.subscribe(function (data) {
-    fs.writeFileSync("output/tmp.json", data);
+main.ports.putAST.subscribe(function (ast) {
+    fs.writeFileSync("output/tmp.json", ast);
 });
 
-main.ports.putCode.subscribe(function (data) {
-    fs.writeFileSync("output/tmp.s", data);
+main.ports.putCode.subscribe(function (code) {
+    fs.writeFileSync("output/tmp.s", code);
 });
 
-main.ports.debug.subscribe(function (data) {
-    console.log(input);
-    console.log(data);
+main.ports.debug.subscribe(function (status) {
+    console.log(status);
+    const [_, col, problem, row] = status.match(
+        /{ col = (\d+), problem = (.*?), row = (\d+) }/
+    );
+    const line = input.split("\n")[row - 1];
+    console.log(row + ": " + line);
+    console.log(" ".repeat(col - 1 + row.length + 2) + "^");
+    console.log(problem);
 });

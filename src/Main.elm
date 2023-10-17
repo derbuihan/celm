@@ -54,14 +54,24 @@ update msg model =
                     parse input
 
                 code =
-                    ast |> Result.map generate
+                    ast |> Result.andThen generate
             in
             case ( ast, code ) of
                 ( Ok ast_, Ok code_ ) ->
-                    ( model, Cmd.batch [ putAST (ast_ |> encode |> Json.Encode.encode 4), putCode code_ ] )
+                    ( model
+                    , Cmd.batch
+                        [ putAST (ast_ |> encode |> Json.Encode.encode 4)
+                        , putCode code_
+                        ]
+                    )
 
                 ( Ok ast_, Err err_ ) ->
-                    ( model, Cmd.batch [ putAST (ast_ |> encode |> Json.Encode.encode 4), debug (err_ |> Debug.toString) ] )
+                    ( model
+                    , Cmd.batch
+                        [ putAST (ast_ |> encode |> Json.Encode.encode 4)
+                        , debug (err_ |> Debug.toString)
+                        ]
+                    )
 
                 ( Err err_, _ ) ->
                     ( model, debug (err_ |> Debug.toString) )

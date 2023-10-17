@@ -4,6 +4,8 @@ import Elm.Syntax.Declaration exposing (Declaration(..))
 import Elm.Syntax.Expression exposing (Expression(..), Function, FunctionImplementation)
 import Elm.Syntax.File exposing (File)
 import Elm.Syntax.Node exposing (Node(..))
+import Elm.Syntax.Range exposing (Range)
+import Parser exposing (DeadEnd, Problem(..))
 
 
 push : String
@@ -16,76 +18,73 @@ pop reg =
     "    ldr " ++ reg ++ ", [sp], 16"
 
 
-genExpr : Expression -> String
-genExpr expr =
+genExpr : Range -> Expression -> Result (List DeadEnd) String
+genExpr range expr =
     case expr of
         Integer val ->
-            "    mov x0, " ++ String.fromInt val
+            Ok ("    mov x0, " ++ String.fromInt val)
 
         Negation node ->
-            [ genNodeExpr node, "    neg x0, x0" ]
-                |> String.join "\n"
+            genNodeExpr node
+                |> Result.map (\x -> x ++ "\n    neg x0, x0")
 
         OperatorApplication opName _ lhsNode rhsNode ->
             let
-                lhs =
+                lhsExpr : Result (List DeadEnd) String
+                lhsExpr =
                     genNodeExpr lhsNode
 
-                rhs =
+                rhsExpr : Result (List DeadEnd) String
+                rhsExpr =
                     genNodeExpr rhsNode
 
-                op =
-                    case opName of
+                opExpr : Result (List DeadEnd) String
+                opExpr =
+                    (case opName of
                         "+" ->
-                            "add"
+                            Ok "add"
 
                         "-" ->
-                            "sub"
+                            Ok "sub"
 
                         "*" ->
-                            "mul"
+                            Ok "mul"
 
                         "/" ->
-                            "sdiv"
+                            Ok "sdiv"
 
                         _ ->
-                            "; unknown operator"
+                            Err [ DeadEnd range.start.row range.start.column (Problem "Unknown operator") ]
+                    )
+                        |> Result.map (\x -> "    " ++ x ++ " x0, x0, x1")
             in
-            [ rhs, push, lhs, pop "x1", "    " ++ op ++ " x0, x0, x1" ]
-                |> String.join "\n"
+            Result.map3 (\lhs op rhs -> [ rhs, push, lhs, pop "x1", op ] |> String.join "\n") lhsExpr opExpr rhsExpr
 
         ParenthesizedExpression node ->
             genNodeExpr node
 
         _ ->
-            "; unknown expression"
+            Err
+                [ DeadEnd range.start.row range.start.column (Problem "Unsupported expression") ]
 
 
-genNodeExpr : Node Expression -> String
-genNodeExpr node =
-    case node of
-        Node _ expr ->
-            genExpr expr
+genNodeExpr : Node Expression -> Result (List DeadEnd) String
+genNodeExpr (Node range node) =
+    genExpr range node
 
 
-genNodeFuncImpl : Node FunctionImplementation -> String
-genNodeFuncImpl node =
-    case node of
-        Node _ func ->
-            genNodeExpr func.expression
+genNodeFuncImpl : Node FunctionImplementation -> Result (List DeadEnd) String
+genNodeFuncImpl (Node _ func) =
+    genNodeExpr func.expression
 
 
-genFunc : Function -> String
+genFunc : Function -> Result (List DeadEnd) String
 genFunc func =
-    let
-        funcImpl =
-            func.declaration
-    in
-    genNodeFuncImpl funcImpl
+    genNodeFuncImpl func.declaration
 
 
-genDecl : Declaration -> String
-genDecl declaration =
+genDecl : Range -> Declaration -> Result (List DeadEnd) String
+genDecl range declaration =
     case declaration of
         FunctionDeclaration func ->
             genFunc func
@@ -94,32 +93,35 @@ genDecl declaration =
             genNodeExpr node
 
         _ ->
-            "; unknown declaration"
+            Err [ DeadEnd range.start.row range.start.column (Problem "Unsupported declaration") ]
 
 
-genNodeDecl : Node Declaration -> String
-genNodeDecl node =
-    case node of
-        Node _ decl ->
-            genDecl decl
+genNodeDecl : Node Declaration -> Result (List DeadEnd) String
+genNodeDecl (Node range decl) =
+    genDecl range decl
 
 
-generate : File -> String
+generate : File -> Result (List DeadEnd) String
 generate ast =
     let
+        declarations : Result (List DeadEnd) String
         declarations =
             case ast.declarations of
                 [] ->
-                    "; no declarations"
+                    Err [ DeadEnd 0 0 UnexpectedChar ]
 
                 x :: _ ->
                     genNodeDecl x
     in
-    [ ".text"
-    , "    .globl _main"
-    , "    .align 2"
-    , "_main:"
-    , declarations
-    , "    ret"
-    ]
-        |> String.join "\n"
+    Result.map
+        (\x ->
+            [ ".text"
+            , "    .globl _main"
+            , "    .align 2"
+            , "_main:"
+            , x
+            , "    ret"
+            ]
+                |> String.join "\n"
+        )
+        declarations
