@@ -1,6 +1,8 @@
 port module Main exposing (main)
 
+import Elm.Syntax.File exposing (encode)
 import Generate exposing (generate)
+import Json.Encode
 import Parse exposing (parse)
 import Platform exposing (Program)
 
@@ -8,7 +10,10 @@ import Platform exposing (Program)
 port get : (String -> msg) -> Sub msg
 
 
-port put : String -> Cmd msg
+port putAST : String -> Cmd msg
+
+
+port putCode : String -> Cmd msg
 
 
 port debug : String -> Cmd msg
@@ -53,13 +58,13 @@ update msg model =
             in
             case ( ast, code ) of
                 ( Ok ast_, Ok code_ ) ->
-                    ( model, Cmd.batch [ debug (ast_ |> Debug.toString), put code_ ] )
+                    ( model, Cmd.batch [ putAST (ast_ |> encode |> Json.Encode.encode 4), putCode code_ ] )
 
-                ( Ok _, Err err_ ) ->
+                ( Ok ast_, Err err_ ) ->
+                    ( model, Cmd.batch [ putAST (ast_ |> encode |> Json.Encode.encode 4), debug (err_ |> Debug.toString) ] )
+
+                ( Err err_, _ ) ->
                     ( model, debug (err_ |> Debug.toString) )
-
-                ( Err err, _ ) ->
-                    ( model, debug (err |> Debug.toString) )
 
 
 subscriptions : Model -> Sub Msg

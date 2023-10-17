@@ -50,6 +50,9 @@ genExpr expr =
             [ rhs, push, lhs, pop "x1", "    " ++ op ++ " x0, x0, x1" ]
                 |> String.join "\n"
 
+        ParenthesizedExpression node ->
+            genNodeExpr node
+
         _ ->
             "; unknown expression"
 

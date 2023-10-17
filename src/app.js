@@ -12,7 +12,12 @@ const filename = args[0];
 const input = fs.readFileSync(filename, "utf-8");
 
 main.ports.get.send(input);
-main.ports.put.subscribe(function (data) {
+
+main.ports.putAST.subscribe(function (data) {
+    fs.writeFileSync("output/tmp.json", data);
+});
+
+main.ports.putCode.subscribe(function (data) {
     fs.writeFileSync("output/tmp.s", data);
 });
 

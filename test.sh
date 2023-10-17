@@ -63,4 +63,19 @@ module Main exposing (main)
 main = 1 + 4 * 3 / 6
 EOF
 
+test 9 <<EOF
+module Main exposing (main)
+main = (1 + 2) * 3
+EOF
+
+test 15 <<EOF
+module Main exposing (main)
+main = (1 + 2 + 3) * (2 + 4 - 3) - 3 + (12 + 18) / 3 - 10
+EOF
+
+test 84 <<EOF
+module Main exposing (main)
+main = 12 * (3 + 4)
+EOF
+
 echo "ALL OK"
