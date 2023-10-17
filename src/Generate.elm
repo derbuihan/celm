@@ -22,6 +22,10 @@ genExpr expr =
         Integer val ->
             "    mov x0, " ++ String.fromInt val
 
+        Negation node ->
+            [ genNodeExpr node, "    neg x0, x0" ]
+                |> String.join "\n"
+
         OperatorApplication opName _ lhsNode rhsNode ->
             let
                 lhs =

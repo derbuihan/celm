@@ -78,4 +78,10 @@ module Main exposing (main)
 main = 12 * (3 + 4)
 EOF
 
+test 11 <<EOF
+module Main exposing (main)
+main = -11 +22
+EOF
+
+
 echo "ALL OK"
