@@ -32,22 +32,8 @@ type alias TypedFunctionImplementation =
 getMetaExpression : Range -> Expression -> Result (List DeadEnd) Meta
 getMetaExpression range_ expr =
     case expr of
-        Integer _ ->
-            Ok { range = range_, type_ = Int }
-
-        ParenthesizedExpression node ->
-            let
-                meta_ =
-                    getMetaNodeExpression node
-            in
-            Result.map (\m -> { range = range_, type_ = m.type_ }) meta_
-
-        Negation node ->
-            let
-                meta_ =
-                    getMetaNodeExpression node
-            in
-            Result.map (\m -> { range = range_, type_ = m.type_ }) meta_
+        UnitExpr ->
+            Ok { range = range_, type_ = Unit }
 
         OperatorApplication op _ left right ->
             let
@@ -68,16 +54,61 @@ getMetaExpression range_ expr =
                                 Ok { range = range_, type_ = Bool }
 
                             else
-                                Err [ DeadEnd range_.start.row range_.start.column (Problem "Unsupported operator") ]
+                                Err [ DeadEnd range_.start.row range_.start.column (Problem "Type: Unsupported expression") ]
 
                         _ ->
-                            Err [ DeadEnd range_.start.row range_.start.column (Problem "Unsupported expression") ]
+                            Err [ DeadEnd range_.start.row range_.start.column (Problem "Type: Unsupported expression") ]
 
                 _ ->
-                    Err [ DeadEnd range_.start.row range_.start.column (Problem "Unsupported expression") ]
+                    Err [ DeadEnd range_.start.row range_.start.column (Problem "Type: Unsupported expression") ]
+
+        IfBlock condition then_ else_ ->
+            let
+                condition_ =
+                    getMetaNodeExpression condition
+
+                then__ =
+                    getMetaNodeExpression then_
+
+                else__ =
+                    getMetaNodeExpression else_
+            in
+            case ( condition_, then__, else__ ) of
+                ( Ok condition__, Ok then___, Ok else___ ) ->
+                    if condition__.type_ == Bool && then___.type_ == else___.type_ then
+                        Ok { range = range_, type_ = then___.type_ }
+
+                    else
+                        Err [ DeadEnd range_.start.row range_.start.column (Problem "Type: Unsupported expression") ]
+
+                ( Err errs, _, _ ) ->
+                    Err errs
+
+                ( _, Err errs, _ ) ->
+                    Err errs
+
+                ( _, _, Err errs ) ->
+                    Err errs
+
+        Integer _ ->
+            Ok { range = range_, type_ = Int }
+
+        ParenthesizedExpression node ->
+            let
+                meta_ =
+                    getMetaNodeExpression node
+            in
+            Result.map (\m -> { range = range_, type_ = m.type_ }) meta_
+
+        Negation node ->
+            let
+                meta_ =
+                    getMetaNodeExpression node
+            in
+            Result.map (\m -> { range = range_, type_ = m.type_ }) meta_
 
         _ ->
-            Err [ DeadEnd range_.start.row range_.start.column (Problem "Unsupported expression") ]
+            Err [ DeadEnd range_.start.row range_.start.column (Problem "Type: Unsupported expression") ]
 
 
 getMetaNodeExpression : Node Expression -> Result (List DeadEnd) Meta
@@ -103,6 +134,29 @@ fromExpression range_ expr =
         UnitExpr ->
             Ok TypedUnitExpr
 
+        OperatorApplication op dir left right ->
+            let
+                lhs =
+                    fromNodeExpression left
+
+                rhs =
+                    fromNodeExpression right
+            in
+            Result.map2 (\lhs_ rhs_ -> TypedOperatorApplication op dir lhs_ rhs_) lhs rhs
+
+        IfBlock condition then_ else_ ->
+            let
+                condition_ =
+                    fromNodeExpression condition
+
+                then__ =
+                    fromNodeExpression then_
+
+                else__ =
+                    fromNodeExpression else_
+            in
+            Result.map3 (\condition__ then___ else___ -> TypedIfBlock condition__ then___ else___) condition_ then__ else__
+
         Integer int ->
             Ok (TypedInteger int)
 
@@ -120,18 +174,8 @@ fromExpression range_ expr =
             in
             typedExpression |> Result.map TypedParenthesizedExpression
 
-        OperatorApplication op dir left right ->
-            let
-                lhs =
-                    fromNodeExpression left
-
-                rhs =
-                    fromNodeExpression right
-            in
-            Result.map2 (\lhs_ rhs_ -> TypedOperatorApplication op dir lhs_ rhs_) lhs rhs
-
         _ ->
-            Err [ DeadEnd range_.start.row range_.start.column (Problem "Unsupported expression") ]
+            Err [ DeadEnd range_.start.row range_.start.column (Problem "Type: Unsupported expression") ]
 
 
 fromFunction : Range -> Function -> Result (List DeadEnd) TypedFunction

@@ -27,13 +27,6 @@ genExpr meta expr =
             meta.range
     in
     case expr of
-        TypedInteger val ->
-            Ok ("    mov x0, " ++ String.fromInt val)
-
-        TypedNegation node ->
-            genNodeExpr node
-                |> Result.map (\x -> x ++ "\n    neg x0, x0")
-
         TypedOperatorApplication opName _ lhsNode rhsNode ->
             let
                 lhsExpr : Result (List DeadEnd) String
@@ -102,16 +95,53 @@ genExpr meta expr =
                                 |> Ok
 
                         _ ->
-                            Err [ DeadEnd range.start.row range.start.column (Problem "Unknown operator") ]
+                            Err [ DeadEnd range.start.row range.start.column (Problem "Gen: Unknown operator") ]
             in
             Result.map3 (\lhs op rhs -> [ rhs, push, lhs, pop "x1", op ] |> String.join "\n") lhsExpr opExpr rhsExpr
+
+        TypedIfBlock condition then_ else_ ->
+            let
+                conditionExpr : Result (List DeadEnd) String
+                conditionExpr =
+                    genNodeExpr condition
+
+                thenExpr : Result (List DeadEnd) String
+                thenExpr =
+                    genNodeExpr then_
+
+                elseExpr : Result (List DeadEnd) String
+                elseExpr =
+                    genNodeExpr else_
+            in
+            Result.map3
+                (\cond then__ else__ ->
+                    [ cond
+                    , "    cbz x0, else"
+                    , then__
+                    , "    b end"
+                    , "else:"
+                    , else__
+                    , "end:"
+                    ]
+                        |> String.join "\n"
+                )
+                conditionExpr
+                thenExpr
+                elseExpr
+
+        TypedInteger val ->
+            Ok ("    mov x0, " ++ String.fromInt val)
+
+        TypedNegation node ->
+            genNodeExpr node
+                |> Result.map (\x -> x ++ "\n    neg x0, x0")
 
         TypedParenthesizedExpression node ->
             genNodeExpr node
 
         _ ->
             Err
-                [ DeadEnd range.start.row range.start.column (Problem "Unsupported expression") ]
+                [ DeadEnd range.start.row range.start.column (Problem "Gen: Unsupported expression") ]
 
 
 genNodeExpr : TypedNode TypedExpression -> Result (List DeadEnd) String

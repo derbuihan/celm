@@ -163,4 +163,14 @@ module Main exposing (main)
 main = 22 >= 11
 EOF
 
+test 1 <<EOF
+module Main exposing (main)
+main = if 1 == 1 then 1 else 2
+EOF
+
+test 2 <<EOF
+module Main exposing (main)
+main = if 1 /= 1 then 1 else 2
+EOF
+
 echo "ALL OK"
