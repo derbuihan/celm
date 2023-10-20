@@ -1,16 +1,22 @@
 port module Main exposing (main)
 
-import Elm.Syntax.File exposing (encode)
+import Elm.Syntax.File exposing (File, encode)
 import Generate exposing (generate)
 import Json.Encode
 import Parse exposing (parse)
+import Parser exposing (DeadEnd)
 import Platform exposing (Program)
+import Result
+import TypedAST exposing (TypedFile, inferType)
 
 
 port get : (String -> msg) -> Sub msg
 
 
 port putAST : String -> Cmd msg
+
+
+port putTypedAST : String -> Cmd msg
 
 
 port putCode : String -> Cmd msg
@@ -50,22 +56,29 @@ update msg model =
     case msg of
         Input input ->
             let
+                ast : Result (List DeadEnd) File
                 ast =
                     parse input
 
+                typedast : Result (List DeadEnd) TypedFile
+                typedast =
+                    ast |> Result.andThen inferType
+
+                code : Result (List DeadEnd) String
                 code =
-                    ast |> Result.andThen generate
+                    typedast |> Result.andThen generate
             in
-            case ( ast, code ) of
-                ( Ok ast_, Ok code_ ) ->
+            case ( ast, typedast, code ) of
+                ( Ok ast_, Ok typedast_, Ok code_ ) ->
                     ( model
                     , Cmd.batch
                         [ putAST (ast_ |> encode |> Json.Encode.encode 4)
+                        , putTypedAST (typedast_ |> Debug.toString)
                         , putCode code_
                         ]
                     )
 
-                ( Ok ast_, Err err_ ) ->
+                ( Ok ast_, Ok typedast_, Err err_ ) ->
                     ( model
                     , Cmd.batch
                         [ putAST (ast_ |> encode |> Json.Encode.encode 4)
@@ -73,7 +86,15 @@ update msg model =
                         ]
                     )
 
-                ( Err err_, _ ) ->
+                ( Ok ast_, Err err_, _ ) ->
+                    ( model
+                    , Cmd.batch
+                        [ putAST (ast_ |> encode |> Json.Encode.encode 4)
+                        , debug (err_ |> Debug.toString)
+                        ]
+                    )
+
+                ( Err err_, _, _ ) ->
                     ( model, debug (err_ |> Debug.toString) )
 
 

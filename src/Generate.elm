@@ -6,6 +6,7 @@ import Elm.Syntax.File exposing (File)
 import Elm.Syntax.Node exposing (Node(..))
 import Elm.Syntax.Range exposing (Range)
 import Parser exposing (DeadEnd, Problem(..))
+import TypedAST exposing (Meta, TypedDeclaration(..), TypedExpression(..), TypedFile, TypedFunction, TypedFunctionImplementation, TypedNode(..), range)
 
 
 push : String
@@ -18,17 +19,21 @@ pop reg =
     "    ldr " ++ reg ++ ", [sp], 16"
 
 
-genExpr : Range -> Expression -> Result (List DeadEnd) String
-genExpr range expr =
+genExpr : Meta -> TypedExpression -> Result (List DeadEnd) String
+genExpr meta expr =
+    let
+        range =
+            meta.range
+    in
     case expr of
-        Integer val ->
+        TypedInteger val ->
             Ok ("    mov x0, " ++ String.fromInt val)
 
-        Negation node ->
+        TypedNegation node ->
             genNodeExpr node
                 |> Result.map (\x -> x ++ "\n    neg x0, x0")
 
-        OperatorApplication opName _ lhsNode rhsNode ->
+        TypedOperatorApplication opName _ lhsNode rhsNode ->
             let
                 lhsExpr : Result (List DeadEnd) String
                 lhsExpr =
@@ -100,7 +105,7 @@ genExpr range expr =
             in
             Result.map3 (\lhs op rhs -> [ rhs, push, lhs, pop "x1", op ] |> String.join "\n") lhsExpr opExpr rhsExpr
 
-        ParenthesizedExpression node ->
+        TypedParenthesizedExpression node ->
             genNodeExpr node
 
         _ ->
@@ -108,40 +113,41 @@ genExpr range expr =
                 [ DeadEnd range.start.row range.start.column (Problem "Unsupported expression") ]
 
 
-genNodeExpr : Node Expression -> Result (List DeadEnd) String
-genNodeExpr (Node range node) =
-    genExpr range node
+genNodeExpr : TypedNode TypedExpression -> Result (List DeadEnd) String
+genNodeExpr (TypedNode meta node) =
+    genExpr meta node
 
 
-genNodeFuncImpl : Node FunctionImplementation -> Result (List DeadEnd) String
-genNodeFuncImpl (Node _ func) =
+genNodeFuncImpl : TypedNode TypedFunctionImplementation -> Result (List DeadEnd) String
+genNodeFuncImpl (TypedNode _ func) =
     genNodeExpr func.expression
 
 
-genFunc : Function -> Result (List DeadEnd) String
+genFunc : TypedFunction -> Result (List DeadEnd) String
 genFunc func =
     genNodeFuncImpl func.declaration
 
 
-genDecl : Range -> Declaration -> Result (List DeadEnd) String
-genDecl range declaration =
+genDecl : Meta -> TypedDeclaration -> Result (List DeadEnd) String
+genDecl meta declaration =
+    let
+        range =
+            meta.range
+    in
     case declaration of
-        FunctionDeclaration func ->
+        TypedFunctionDeclaration func ->
             genFunc func
 
-        Destructuring _ node ->
+        TypedDestructuring _ node ->
             genNodeExpr node
 
-        _ ->
-            Err [ DeadEnd range.start.row range.start.column (Problem "Unsupported declaration") ]
+
+genNodeDecl : TypedNode TypedDeclaration -> Result (List DeadEnd) String
+genNodeDecl (TypedNode meta decl) =
+    genDecl meta decl
 
 
-genNodeDecl : Node Declaration -> Result (List DeadEnd) String
-genNodeDecl (Node range decl) =
-    genDecl range decl
-
-
-generate : File -> Result (List DeadEnd) String
+generate : TypedFile -> Result (List DeadEnd) String
 generate ast =
     let
         declarations : Result (List DeadEnd) String

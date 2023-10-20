@@ -17,6 +17,10 @@ main.ports.putAST.subscribe(function (ast) {
     fs.writeFileSync("output/tmp.json", ast);
 });
 
+main.ports.putTypedAST.subscribe(function (typedast) {
+    fs.writeFileSync("output/tmp.typed.json", typedast);
+});
+
 main.ports.putCode.subscribe(function (code) {
     fs.writeFileSync("output/tmp.s", code);
 });
