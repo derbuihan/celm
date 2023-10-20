@@ -1,12 +1,13 @@
 module Generate exposing (generate)
 
 import Elm.Syntax.Declaration exposing (Declaration(..))
-import Elm.Syntax.Expression exposing (Expression(..), Function, FunctionImplementation)
-import Elm.Syntax.File exposing (File)
+import Elm.Syntax.Expression exposing (Expression(..))
 import Elm.Syntax.Node exposing (Node(..))
-import Elm.Syntax.Range exposing (Range)
 import Parser exposing (DeadEnd, Problem(..))
-import TypedAST exposing (Meta, TypedDeclaration(..), TypedExpression(..), TypedFile, TypedFunction, TypedFunctionImplementation, TypedNode(..), range)
+import Typed.Declaration exposing (TypedDeclaration(..))
+import Typed.Expression exposing (TypedExpression(..), TypedFunction, TypedFunctionImplementation)
+import Typed.File exposing (TypedFile)
+import Typed.Node exposing (Meta, TypedNode(..), range)
 
 
 push : String
@@ -129,11 +130,7 @@ genFunc func =
 
 
 genDecl : Meta -> TypedDeclaration -> Result (List DeadEnd) String
-genDecl meta declaration =
-    let
-        range =
-            meta.range
-    in
+genDecl _ declaration =
     case declaration of
         TypedFunctionDeclaration func ->
             genFunc func

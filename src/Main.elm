@@ -2,12 +2,13 @@ port module Main exposing (main)
 
 import Elm.Syntax.File exposing (File, encode)
 import Generate exposing (generate)
+import InferType exposing (inferType)
 import Json.Encode
 import Parse exposing (parse)
 import Parser exposing (DeadEnd)
 import Platform exposing (Program)
 import Result
-import TypedAST exposing (TypedFile, inferType)
+import Typed.File exposing (TypedFile)
 
 
 port get : (String -> msg) -> Sub msg
@@ -82,6 +83,7 @@ update msg model =
                     ( model
                     , Cmd.batch
                         [ putAST (ast_ |> encode |> Json.Encode.encode 4)
+                        , putTypedAST (typedast_ |> Debug.toString)
                         , debug (err_ |> Debug.toString)
                         ]
                     )
