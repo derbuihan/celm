@@ -1,13 +1,11 @@
 module Generate exposing (generate)
 
-import Elm.Syntax.Declaration exposing (Declaration(..))
-import Elm.Syntax.Expression exposing (Expression(..))
-import Elm.Syntax.Node exposing (Node(..))
+import Elm.Syntax.Range exposing (Range)
 import Parser exposing (DeadEnd, Problem(..))
 import Typed.Declaration exposing (TypedDeclaration(..))
 import Typed.Expression exposing (TypedExpression(..), TypedFunction, TypedFunctionImplementation)
 import Typed.File exposing (TypedFile)
-import Typed.Node exposing (Meta, TypedNode(..), range)
+import Typed.Node exposing (Meta, TypedNode(..))
 
 
 push : String
@@ -23,6 +21,7 @@ pop reg =
 genExpr : Meta -> TypedExpression -> Result (List DeadEnd) String
 genExpr meta expr =
     let
+        range : Range
         range =
             meta.range
     in

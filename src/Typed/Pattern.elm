@@ -1,4 +1,4 @@
-module Typed.Pattern exposing (..)
+module Typed.Pattern exposing (TypedPattern(..), fromNodePattern)
 
 import Elm.Syntax.Node exposing (Node(..))
 import Elm.Syntax.Pattern exposing (Pattern(..))

@@ -1,4 +1,4 @@
-module Typed.File exposing (..)
+module Typed.File exposing (TypedFile)
 
 import Typed.Declaration exposing (TypedDeclaration)
 import Typed.Node exposing (TypedNode)

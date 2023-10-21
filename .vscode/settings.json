@@ -2,6 +2,7 @@
     "elmLS.elmPath": "./node_modules/.bin/elm",
     "elmLS.elmFormatPath": "./node_modules/.bin/elm-format",
     "elmLS.elmTestPath": "./node_modules/.bin/elm-test",
+    "elmLS.elmReviewPath": "./node_modules/.bin/elm-review",
     "[elm]": {
         "editor.defaultFormatter": "elmTooling.elm-ls-vscode",
         "editor.formatOnSave": true,

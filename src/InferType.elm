@@ -1,11 +1,9 @@
 module InferType exposing (inferType)
 
 import Elm.Syntax.File exposing (File)
-import Elm.Syntax.Node exposing (Node(..))
 import Parser exposing (DeadEnd, Problem(..))
-import Typed.Declaration exposing (TypedDeclaration(..), fromNodeDeclaration)
+import Typed.Declaration exposing (fromNodeDeclaration)
 import Typed.File exposing (TypedFile)
-import Typed.Node exposing (Type(..), TypedNode(..))
 
 
 inferType : File -> Result (List DeadEnd) TypedFile

@@ -1,9 +1,7 @@
-module Typed.Declaration exposing (..)
+module Typed.Declaration exposing (TypedDeclaration(..), fromNodeDeclaration)
 
 import Elm.Syntax.Declaration exposing (Declaration(..))
-import Elm.Syntax.Expression exposing (Expression(..))
 import Elm.Syntax.Node exposing (Node(..))
-import Elm.Syntax.Pattern exposing (Pattern(..))
 import Elm.Syntax.Range exposing (Range)
 import Parser exposing (DeadEnd, Problem(..))
 import Typed.Expression exposing (TypedExpression, TypedFunction, fromFunction, fromNodeExpression)
@@ -19,6 +17,7 @@ type TypedDeclaration
 fromNodeDeclaration : Node Declaration -> Result (List DeadEnd) (TypedNode TypedDeclaration)
 fromNodeDeclaration (Node range_ node) =
     let
+        typedDeclaration : Result (List DeadEnd) TypedDeclaration
         typedDeclaration =
             fromDeclaration range_ node
     in
@@ -30,9 +29,11 @@ fromDeclaration range_ decl =
     case decl of
         Destructuring pattern expr_ ->
             let
+                typedPattern : Result (List DeadEnd) (TypedNode TypedPattern)
                 typedPattern =
                     fromNodePattern pattern
 
+                typedExpression : Result (List DeadEnd) (TypedNode TypedExpression)
                 typedExpression =
                     fromNodeExpression expr_
             in
@@ -40,6 +41,7 @@ fromDeclaration range_ decl =
 
         FunctionDeclaration func ->
             let
+                typedFunction : Result (List DeadEnd) TypedFunction
                 typedFunction =
                     fromFunction range_ func
             in

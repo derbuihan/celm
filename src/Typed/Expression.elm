@@ -1,8 +1,7 @@
-module Typed.Expression exposing (..)
+module Typed.Expression exposing (TypedExpression(..), TypedFunction, TypedFunctionImplementation, fromFunction, fromNodeExpression)
 
 import Elm.Syntax.Expression exposing (Expression(..), Function, FunctionImplementation)
 import Elm.Syntax.Infix exposing (InfixDirection)
-import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node exposing (Node(..))
 import Elm.Syntax.Range exposing (Range)
 import Parser exposing (DeadEnd, Problem(..))
@@ -12,7 +11,6 @@ import Typed.Node exposing (Meta, Type(..), TypedNode(..))
 type TypedExpression
     = TypedUnitExpr
     | TypedOperatorApplication String InfixDirection (TypedNode TypedExpression) (TypedNode TypedExpression)
-    | TypedFunctionOrValue ModuleName String
     | TypedIfBlock (TypedNode TypedExpression) (TypedNode TypedExpression) (TypedNode TypedExpression)
     | TypedInteger Int
     | TypedNegation (TypedNode TypedExpression)
@@ -37,39 +35,39 @@ getMetaExpression range_ expr =
 
         OperatorApplication op _ left right ->
             let
+                lhs : Result (List DeadEnd) Meta
                 lhs =
                     getMetaNodeExpression left
 
+                rhs : Result (List DeadEnd) Meta
                 rhs =
                     getMetaNodeExpression right
             in
-            case ( lhs, rhs ) of
-                ( Ok lhs_, Ok rhs_ ) ->
-                    case ( lhs_.type_, rhs_.type_ ) of
-                        ( Int, Int ) ->
-                            if List.member op [ "+", "-", "*", "/" ] then
-                                Ok { range = range_, type_ = Int }
+            case ( Result.map .type_ lhs, Result.map .type_ rhs ) of
+                ( Ok Int, Ok Int ) ->
+                    if List.member op [ "+", "-", "*", "/" ] then
+                        Ok { range = range_, type_ = Int }
 
-                            else if List.member op [ "==", "/=", "<", ">", "<=", ">=" ] then
-                                Ok { range = range_, type_ = Bool }
+                    else if List.member op [ "==", "/=", "<", ">", "<=", ">=" ] then
+                        Ok { range = range_, type_ = Bool }
 
-                            else
-                                Err [ DeadEnd range_.start.row range_.start.column (Problem "Type: Unsupported expression") ]
-
-                        _ ->
-                            Err [ DeadEnd range_.start.row range_.start.column (Problem "Type: Unsupported expression") ]
+                    else
+                        Err [ DeadEnd range_.start.row range_.start.column (Problem "Type: Unsupported expression") ]
 
                 _ ->
                     Err [ DeadEnd range_.start.row range_.start.column (Problem "Type: Unsupported expression") ]
 
         IfBlock condition then_ else_ ->
             let
+                condition_ : Result (List DeadEnd) Meta
                 condition_ =
                     getMetaNodeExpression condition
 
+                then__ : Result (List DeadEnd) Meta
                 then__ =
                     getMetaNodeExpression then_
 
+                else__ : Result (List DeadEnd) Meta
                 else__ =
                     getMetaNodeExpression else_
             in
@@ -95,6 +93,7 @@ getMetaExpression range_ expr =
 
         ParenthesizedExpression node ->
             let
+                meta_ : Result (List DeadEnd) Meta
                 meta_ =
                     getMetaNodeExpression node
             in
@@ -102,6 +101,7 @@ getMetaExpression range_ expr =
 
         Negation node ->
             let
+                meta_ : Result (List DeadEnd) Meta
                 meta_ =
                     getMetaNodeExpression node
             in
@@ -119,9 +119,11 @@ getMetaNodeExpression (Node r e) =
 fromNodeExpression : Node Expression -> Result (List DeadEnd) (TypedNode TypedExpression)
 fromNodeExpression (Node range_ node) =
     let
+        meta_ : Result (List DeadEnd) Meta
         meta_ =
             getMetaNodeExpression (Node range_ node)
 
+        typedExpression : Result (List DeadEnd) TypedExpression
         typedExpression =
             fromExpression range_ node
     in
@@ -136,9 +138,11 @@ fromExpression range_ expr =
 
         OperatorApplication op dir left right ->
             let
+                lhs : Result (List DeadEnd) (TypedNode TypedExpression)
                 lhs =
                     fromNodeExpression left
 
+                rhs : Result (List DeadEnd) (TypedNode TypedExpression)
                 rhs =
                     fromNodeExpression right
             in
@@ -146,12 +150,15 @@ fromExpression range_ expr =
 
         IfBlock condition then_ else_ ->
             let
+                condition_ : Result (List DeadEnd) (TypedNode TypedExpression)
                 condition_ =
                     fromNodeExpression condition
 
+                then__ : Result (List DeadEnd) (TypedNode TypedExpression)
                 then__ =
                     fromNodeExpression then_
 
+                else__ : Result (List DeadEnd) (TypedNode TypedExpression)
                 else__ =
                     fromNodeExpression else_
             in
@@ -162,6 +169,7 @@ fromExpression range_ expr =
 
         Negation node ->
             let
+                typedExpression : Result (List DeadEnd) (TypedNode TypedExpression)
                 typedExpression =
                     fromNodeExpression node
             in
@@ -169,6 +177,7 @@ fromExpression range_ expr =
 
         ParenthesizedExpression node ->
             let
+                typedExpression : Result (List DeadEnd) (TypedNode TypedExpression)
                 typedExpression =
                     fromNodeExpression node
             in
@@ -181,6 +190,7 @@ fromExpression range_ expr =
 fromFunction : Range -> Function -> Result (List DeadEnd) TypedFunction
 fromFunction _ func =
     let
+        typedFunction : Result (List DeadEnd) (TypedNode TypedFunctionImplementation)
         typedFunction =
             fromNodeFunctionImplementation func.declaration
     in
@@ -190,6 +200,7 @@ fromFunction _ func =
 fromNodeFunctionImplementation : Node FunctionImplementation -> Result (List DeadEnd) (TypedNode TypedFunctionImplementation)
 fromNodeFunctionImplementation (Node range_ node) =
     let
+        typedFunctionImplementation : Result (List DeadEnd) TypedFunctionImplementation
         typedFunctionImplementation =
             fromFunctionImplementation range_ node
     in
@@ -199,6 +210,7 @@ fromNodeFunctionImplementation (Node range_ node) =
 fromFunctionImplementation : Range -> FunctionImplementation -> Result (List DeadEnd) TypedFunctionImplementation
 fromFunctionImplementation _ funcimpl =
     let
+        typedExpression : Result (List DeadEnd) (TypedNode TypedExpression)
         typedExpression =
             fromNodeExpression funcimpl.expression
     in

@@ -1,4 +1,4 @@
-port module Main exposing (main)
+port module Main exposing (Flags, Model, Msg, main)
 
 import Elm.Syntax.File exposing (File, encode)
 import Generate exposing (generate)
