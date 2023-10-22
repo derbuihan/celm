@@ -140,20 +140,27 @@ genNodeExpression (TypedNode meta expr) =
             Result.map3 (\lhs op rhs -> [ rhs, push, lhs, pop "x1", op ] |> String.join "\n") lhsExpr opExpr rhsExpr
 
         TypedFunctionOrValue moduleName name ->
-            let
-                name_ : Char
-                name_ =
-                    name |> String.uncons |> Maybe.map Tuple.first |> Maybe.withDefault 'x'
+            if name == "True" then
+                Ok "    mov x0, 1"
 
-                offset : Int
-                offset =
-                    (Char.toCode name_ - 97 + 1) * 16
-            in
-            [ "    sub x0, x29, " ++ (offset |> String.fromInt)
-            , "    ldr x0, [x0]"
-            ]
-                |> String.join "\n"
-                |> Ok
+            else if name == "False" then
+                Ok "    mov x0, 0"
+
+            else
+                let
+                    name_ : Char
+                    name_ =
+                        name |> String.uncons |> Maybe.map Tuple.first |> Maybe.withDefault 'x'
+
+                    offset : Int
+                    offset =
+                        (Char.toCode name_ - 97 + 1) * 16
+                in
+                [ "    sub x0, x29, " ++ (offset |> String.fromInt)
+                , "    ldr x0, [x0]"
+                ]
+                    |> String.join "\n"
+                    |> Ok
 
         TypedIfBlock cond then_ else_ ->
             let

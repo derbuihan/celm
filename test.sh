@@ -260,4 +260,14 @@ in
     a + b + c
 EOF
 
+test 11 <<EOF
+module Main exposing (main)
+main = if True then 11 else 22
+EOF
+
+test 22 <<EOF
+module Main exposing (main)
+main = if False then 11 else 22
+EOF
+
 echo "ALL OK"

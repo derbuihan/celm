@@ -177,7 +177,11 @@ fromNodeExpression env_ (Node range_ expr) =
                     Err (lhs_ ++ rhs_)
 
         FunctionOrValue moduleName name ->
-            Ok (TypedNode { range = range_, type_ = Int, env = env_ |> countEnv } (TypedFunctionOrValue moduleName name))
+            if name == "True" || name == "False" then
+                Ok (TypedNode { range = range_, type_ = Bool, env = env_ |> countEnv } (TypedFunctionOrValue moduleName name))
+
+            else
+                Ok (TypedNode { range = range_, type_ = Int, env = env_ |> countEnv } (TypedFunctionOrValue moduleName name))
 
         IfBlock cond then_ else_ ->
             let
