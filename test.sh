@@ -208,10 +208,56 @@ module Main exposing (main)
 main = if 0 == 0 then if 0 == 0 then 3 else 4 else if 0 /= 0 then 5 else 6
 EOF
 
-
 test 3 <<EOF
 module Main exposing (main)
 main = if 0 == 0 then if 0 == 0 then 3 else 4 else if 0 == 0 then 5 else 6
+EOF
+
+test 11 <<EOF
+module Main exposing (main)
+main = let
+    a = 11
+in
+    a
+EOF
+
+test 33 <<EOF
+module Main exposing (main)
+main = let
+    d = 11 + 22
+in
+    d
+EOF
+
+test 110 <<EOF
+module Main exposing (main)
+main = let
+    a = 11 + 22
+    b = 33 + 44
+in
+    a + b
+EOF
+
+test 30 <<EOF
+module Main exposing (main)
+main = let
+    a = 11
+    b = a + 22
+    c = b - 13
+    d = c / 2
+    e = d * 3
+in
+    e
+EOF
+
+test 60 <<EOF
+module Main exposing (main)
+main = let
+    c = 10
+    b = 20
+    a = 30
+in
+    a + b + c
 EOF
 
 echo "ALL OK"

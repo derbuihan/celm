@@ -1,10 +1,11 @@
 module Generate exposing (generate)
 
 import Parser exposing (DeadEnd, Problem(..))
+import Result.Extra as Result
 import Typed.Declaration exposing (TypedDeclaration(..))
-import Typed.Expression exposing (TypedExpression(..), TypedFunction, TypedFunctionImplementation)
+import Typed.Expression exposing (TypedExpression(..), TypedFunctionImplementation, TypedLetDeclaration(..))
 import Typed.File exposing (TypedFile)
-import Typed.Node exposing (Meta, TypedNode(..), env)
+import Typed.Node exposing (TypedNode(..), env, value)
 
 
 push : String
@@ -17,8 +18,50 @@ pop reg =
     "    ldr " ++ reg ++ ", [sp], 16"
 
 
-genExpr : Meta -> TypedExpression -> Result (List DeadEnd) String
-genExpr meta expr =
+genNodeLetDeclaration : TypedNode TypedLetDeclaration -> Result (List DeadEnd) String
+genNodeLetDeclaration (TypedNode _ decl) =
+    case decl of
+        TypedLetFunction func ->
+            let
+                genNodeFuncImpl : TypedNode TypedFunctionImplementation -> Result (List DeadEnd) String
+                genNodeFuncImpl (TypedNode _ funcImpl) =
+                    let
+                        name : Char
+                        name =
+                            funcImpl.name |> value |> String.uncons |> Maybe.map Tuple.first |> Maybe.withDefault 'x'
+
+                        offset : Int
+                        offset =
+                            (Char.toCode name - 97 + 1) * 16
+
+                        expr : TypedNode TypedExpression
+                        expr =
+                            funcImpl.expression
+
+                        codeExpr : Result (List DeadEnd) String
+                        codeExpr =
+                            genNodeExpression expr
+                    in
+                    Result.map
+                        (\expr_ ->
+                            [ "    sub x0, x29, " ++ (offset |> String.fromInt)
+                            , "    str x0, [sp, -16]!"
+                            , expr_
+                            , "    ldr x1, [sp], 16"
+                            , "    str x0, [x1]"
+                            ]
+                                |> String.join "\n"
+                        )
+                        codeExpr
+
+                code =
+                    genNodeFuncImpl func.declaration
+            in
+            code
+
+
+genNodeExpression : TypedNode TypedExpression -> Result (List DeadEnd) String
+genNodeExpression (TypedNode meta expr) =
     let
         { row, column } =
             meta.range.start
@@ -28,11 +71,11 @@ genExpr meta expr =
             let
                 lhsExpr : Result (List DeadEnd) String
                 lhsExpr =
-                    genNodeExpr lhsNode
+                    genNodeExpression lhsNode
 
                 rhsExpr : Result (List DeadEnd) String
                 rhsExpr =
-                    genNodeExpr rhsNode
+                    genNodeExpression rhsNode
 
                 opExpr : Result (List DeadEnd) String
                 opExpr =
@@ -96,15 +139,31 @@ genExpr meta expr =
             in
             Result.map3 (\lhs op rhs -> [ rhs, push, lhs, pop "x1", op ] |> String.join "\n") lhsExpr opExpr rhsExpr
 
+        TypedFunctionOrValue moduleName name ->
+            let
+                name_ : Char
+                name_ =
+                    name |> String.uncons |> Maybe.map Tuple.first |> Maybe.withDefault 'x'
+
+                offset : Int
+                offset =
+                    (Char.toCode name_ - 97 + 1) * 16
+            in
+            [ "    sub x0, x29, " ++ (offset |> String.fromInt)
+            , "    ldr x0, [x0]"
+            ]
+                |> String.join "\n"
+                |> Ok
+
         TypedIfBlock cond then_ else_ ->
             let
                 condExpr : Result (List DeadEnd) String
                 condExpr =
-                    genNodeExpr cond
+                    genNodeExpression cond
 
                 thenExpr : Result (List DeadEnd) String
                 thenExpr =
-                    genNodeExpr then_
+                    genNodeExpression then_
 
                 endLabel : String
                 endLabel =
@@ -113,7 +172,7 @@ genExpr meta expr =
 
                 elseExpr : Result (List DeadEnd) String
                 elseExpr =
-                    genNodeExpr else_
+                    genNodeExpression else_
 
                 elseLabel : String
                 elseLabel =
@@ -140,45 +199,51 @@ genExpr meta expr =
             Ok ("    mov x0, " ++ String.fromInt val)
 
         TypedNegation node ->
-            genNodeExpr node
+            genNodeExpression node
                 |> Result.map (\x -> x ++ "\n    neg x0, x0")
 
         TypedParenthesizedExpression node ->
-            genNodeExpr node
+            genNodeExpression node
+
+        TypedLetExpression letblock ->
+            let
+                declarations : Result (List DeadEnd) (List String)
+                declarations =
+                    Result.combineMap
+                        genNodeLetDeclaration
+                        letblock.declarations
+
+                expression : Result (List DeadEnd) String
+                expression =
+                    genNodeExpression letblock.expression
+            in
+            Result.map2
+                (\decls expr_ ->
+                    decls
+                        ++ [ expr_ ]
+                        |> String.join "\n"
+                )
+                declarations
+                expression
 
         _ ->
             Err
                 [ DeadEnd row column (Problem "Gen: Unsupported expression") ]
 
 
-genNodeExpr : TypedNode TypedExpression -> Result (List DeadEnd) String
-genNodeExpr (TypedNode meta node) =
-    genExpr meta node
+genNodeFunctionImplementation : TypedNode TypedFunctionImplementation -> Result (List DeadEnd) String
+genNodeFunctionImplementation (TypedNode _ func) =
+    genNodeExpression func.expression
 
 
-genNodeFuncImpl : TypedNode TypedFunctionImplementation -> Result (List DeadEnd) String
-genNodeFuncImpl (TypedNode _ func) =
-    genNodeExpr func.expression
-
-
-genFunc : TypedFunction -> Result (List DeadEnd) String
-genFunc func =
-    genNodeFuncImpl func.declaration
-
-
-genDecl : Meta -> TypedDeclaration -> Result (List DeadEnd) String
-genDecl _ declaration =
-    case declaration of
+genNodeDeclaration : TypedNode TypedDeclaration -> Result (List DeadEnd) String
+genNodeDeclaration (TypedNode _ decl) =
+    case decl of
         TypedFunctionDeclaration func ->
-            genFunc func
+            genNodeFunctionImplementation func.declaration
 
         TypedDestructuring _ node ->
-            genNodeExpr node
-
-
-genNodeDecl : TypedNode TypedDeclaration -> Result (List DeadEnd) String
-genNodeDecl (TypedNode meta decl) =
-    genDecl meta decl
+            genNodeExpression node
 
 
 generate : TypedFile -> Result (List DeadEnd) String
@@ -191,7 +256,7 @@ generate ast =
                     Err [ DeadEnd 0 0 UnexpectedChar ]
 
                 x :: _ ->
-                    genNodeDecl x
+                    genNodeDeclaration x
     in
     Result.map
         (\x ->

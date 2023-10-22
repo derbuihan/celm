@@ -1,9 +1,8 @@
 port module Main exposing (Flags, Model, Msg, main)
 
-import Elm.Syntax.File exposing (File, encode)
+import Elm.Syntax.File exposing (File)
 import Generate exposing (generate)
 import InferType exposing (inferType)
-import Json.Encode
 import Parse exposing (parse)
 import Parser exposing (DeadEnd)
 import Platform exposing (Program)
@@ -73,7 +72,7 @@ update msg model =
                 ( Ok ast_, Ok typedast_, Ok code_ ) ->
                     ( model
                     , Cmd.batch
-                        [ putAST (ast_ |> encode |> Json.Encode.encode 4)
+                        [ putAST (ast_ |> Debug.toString)
                         , putTypedAST (typedast_ |> Debug.toString)
                         , putCode code_
                         ]
@@ -82,7 +81,7 @@ update msg model =
                 ( Ok ast_, Ok typedast_, Err err_ ) ->
                     ( model
                     , Cmd.batch
-                        [ putAST (ast_ |> encode |> Json.Encode.encode 4)
+                        [ putAST (ast_ |> Debug.toString)
                         , putTypedAST (typedast_ |> Debug.toString)
                         , debug (err_ |> Debug.toString)
                         ]
@@ -91,7 +90,7 @@ update msg model =
                 ( Ok ast_, Err err_, _ ) ->
                     ( model
                     , Cmd.batch
-                        [ putAST (ast_ |> encode |> Json.Encode.encode 4)
+                        [ putAST (ast_ |> Debug.toString)
                         , debug (err_ |> Debug.toString)
                         ]
                     )
