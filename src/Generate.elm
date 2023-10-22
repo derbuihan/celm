@@ -1,6 +1,5 @@
 module Generate exposing (generate)
 
-import Elm.Syntax.Range exposing (Range)
 import Parser exposing (DeadEnd, Problem(..))
 import Typed.Declaration exposing (TypedDeclaration(..))
 import Typed.Expression exposing (TypedExpression(..), TypedFunction, TypedFunctionImplementation)
@@ -21,9 +20,8 @@ pop reg =
 genExpr : Meta -> TypedExpression -> Result (List DeadEnd) String
 genExpr meta expr =
     let
-        range : Range
-        range =
-            meta.range
+        { row, column } =
+            meta.range.start
     in
     case expr of
         TypedOperatorApplication opName _ lhsNode rhsNode ->
@@ -94,7 +92,7 @@ genExpr meta expr =
                                 |> Ok
 
                         _ ->
-                            Err [ DeadEnd range.start.row range.start.column (Problem "Gen: Unknown operator") ]
+                            Err [ DeadEnd row column (Problem "Gen: Unknown operator") ]
             in
             Result.map3 (\lhs op rhs -> [ rhs, push, lhs, pop "x1", op ] |> String.join "\n") lhsExpr opExpr rhsExpr
 
@@ -140,7 +138,7 @@ genExpr meta expr =
 
         _ ->
             Err
-                [ DeadEnd range.start.row range.start.column (Problem "Gen: Unsupported expression") ]
+                [ DeadEnd row column (Problem "Gen: Unsupported expression") ]
 
 
 genNodeExpr : TypedNode TypedExpression -> Result (List DeadEnd) String
