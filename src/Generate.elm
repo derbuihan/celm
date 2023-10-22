@@ -4,7 +4,7 @@ import Parser exposing (DeadEnd, Problem(..))
 import Typed.Declaration exposing (TypedDeclaration(..))
 import Typed.Expression exposing (TypedExpression(..), TypedFunction, TypedFunctionImplementation)
 import Typed.File exposing (TypedFile)
-import Typed.Node exposing (Meta, TypedNode(..))
+import Typed.Node exposing (Meta, TypedNode(..), env)
 
 
 push : String
@@ -96,33 +96,43 @@ genExpr meta expr =
             in
             Result.map3 (\lhs op rhs -> [ rhs, push, lhs, pop "x1", op ] |> String.join "\n") lhsExpr opExpr rhsExpr
 
-        TypedIfBlock condition then_ else_ ->
+        TypedIfBlock cond then_ else_ ->
             let
-                conditionExpr : Result (List DeadEnd) String
-                conditionExpr =
-                    genNodeExpr condition
+                condExpr : Result (List DeadEnd) String
+                condExpr =
+                    genNodeExpr cond
 
                 thenExpr : Result (List DeadEnd) String
                 thenExpr =
                     genNodeExpr then_
 
+                endLabel : String
+                endLabel =
+                    ".L.end."
+                        ++ (cond |> env |> .label |> String.fromInt)
+
                 elseExpr : Result (List DeadEnd) String
                 elseExpr =
                     genNodeExpr else_
+
+                elseLabel : String
+                elseLabel =
+                    ".L.else."
+                        ++ (else_ |> env |> .label |> String.fromInt)
             in
             Result.map3
-                (\cond then__ else__ ->
-                    [ cond
-                    , "    cbz x0, else"
+                (\cond_ then__ else__ ->
+                    [ cond_
+                    , "    cbz x0, " ++ elseLabel
                     , then__
-                    , "    b end"
-                    , "else:"
+                    , "    b " ++ endLabel
+                    , elseLabel ++ ":"
                     , else__
-                    , "end:"
+                    , endLabel ++ ":"
                     ]
                         |> String.join "\n"
                 )
-                conditionExpr
+                condExpr
                 thenExpr
                 elseExpr
 

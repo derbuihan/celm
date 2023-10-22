@@ -173,4 +173,45 @@ module Main exposing (main)
 main = if 1 /= 1 then 1 else 2
 EOF
 
+test 6 <<EOF
+module Main exposing (main)
+main = if 0 /= 0 then if 0 /= 0 then 3 else 4 else if 0 /= 0 then 5 else 6
+EOF
+
+test 5 <<EOF
+module Main exposing (main)
+main = if 0 /= 0 then if 0 /= 0 then 3 else 4 else if 0 == 0 then 5 else 6
+EOF
+
+test 6 <<EOF
+module Main exposing (main)
+main = if 0 /= 0 then if 0 == 0 then 3 else 4 else if 0 /= 0 then 5 else 6
+EOF
+
+test 4 <<EOF
+module Main exposing (main)
+main = if 0 == 0 then if 0 /= 0 then 3 else 4 else if 0 /= 0 then 5 else 6
+EOF
+
+test 5 <<EOF
+module Main exposing (main)
+main = if 0 /= 0 then if 0 == 0 then 3 else 4 else if 0 == 0 then 5 else 6
+EOF
+
+test 4 <<EOF
+module Main exposing (main)
+main = if 0 == 0 then if 0 /= 0 then 3 else 4 else if 0 == 0 then 5 else 6
+EOF
+
+test 3 <<EOF
+module Main exposing (main)
+main = if 0 == 0 then if 0 == 0 then 3 else 4 else if 0 /= 0 then 5 else 6
+EOF
+
+
+test 3 <<EOF
+module Main exposing (main)
+main = if 0 == 0 then if 0 == 0 then 3 else 4 else if 0 == 0 then 5 else 6
+EOF
+
 echo "ALL OK"

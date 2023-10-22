@@ -1,4 +1,4 @@
-module Typed.Node exposing (Meta, Type(..), TypedNode(..), meta, range, type_, value)
+module Typed.Node exposing (Env, Meta, Type(..), TypedNode(..), countEnv, env, meta, range, type_, value)
 
 import Elm.Syntax.Range exposing (Range)
 
@@ -9,9 +9,15 @@ type Type
     | Unit
 
 
+type alias Env =
+    { label : Int
+    }
+
+
 type alias Meta =
     { range : Range
     , type_ : Type
+    , env : Env
     }
 
 
@@ -29,6 +35,11 @@ type_ (TypedNode m _) =
     m.type_
 
 
+env : TypedNode a -> Env
+env (TypedNode m _) =
+    m.env
+
+
 value : TypedNode a -> a
 value (TypedNode _ v) =
     v
@@ -37,3 +48,8 @@ value (TypedNode _ v) =
 meta : TypedNode a -> Meta
 meta (TypedNode m _) =
     m
+
+
+countEnv : Env -> Env
+countEnv env_ =
+    { env_ | label = env_.label + 1 }

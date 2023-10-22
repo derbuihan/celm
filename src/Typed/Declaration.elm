@@ -4,7 +4,7 @@ import Elm.Syntax.Declaration exposing (Declaration(..))
 import Elm.Syntax.Node exposing (Node(..))
 import Parser exposing (DeadEnd, Problem(..))
 import Typed.Expression exposing (TypedExpression, TypedFunction, fromFunction, fromNodeExpression)
-import Typed.Node exposing (Type(..), TypedNode(..), type_)
+import Typed.Node exposing (Env, Type(..), TypedNode(..), countEnv, env, type_)
 import Typed.Pattern exposing (TypedPattern, fromNodePattern)
 
 
@@ -13,8 +13,8 @@ type TypedDeclaration
     | TypedFunctionDeclaration TypedFunction
 
 
-fromNodeDeclaration : Node Declaration -> Result (List DeadEnd) (TypedNode TypedDeclaration)
-fromNodeDeclaration (Node range_ node) =
+fromNodeDeclaration : Env -> Node Declaration -> Result (List DeadEnd) (TypedNode TypedDeclaration)
+fromNodeDeclaration env_ (Node range_ node) =
     let
         { row, column } =
             range_.start
@@ -24,22 +24,23 @@ fromNodeDeclaration (Node range_ node) =
             let
                 typedPattern : Result (List DeadEnd) (TypedNode TypedPattern)
                 typedPattern =
-                    fromNodePattern pattern
+                    fromNodePattern env_ pattern
 
                 typedExpression : Result (List DeadEnd) (TypedNode TypedExpression)
                 typedExpression =
-                    fromNodeExpression expr_
+                    typedPattern
+                        |> Result.andThen (\p -> fromNodeExpression (p |> env) expr_)
             in
-            Result.map2 (\p e -> TypedNode { range = range_, type_ = type_ e } (TypedDestructuring p e)) typedPattern typedExpression
+            Result.map2 (\p e -> TypedNode { range = range_, type_ = type_ e, env = e |> env |> countEnv } (TypedDestructuring p e)) typedPattern typedExpression
 
         FunctionDeclaration func ->
             let
                 typedFunction : Result (List DeadEnd) TypedFunction
                 typedFunction =
-                    fromFunction range_ func
+                    fromFunction env_ func
             in
             Result.map
-                (\f -> TypedNode { range = range_, type_ = Unit } (TypedFunctionDeclaration f))
+                (\f -> TypedNode { range = range_, type_ = Unit, env = f.declaration |> env |> countEnv } (TypedFunctionDeclaration f))
                 typedFunction
 
         _ ->
