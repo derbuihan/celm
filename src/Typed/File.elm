@@ -42,7 +42,7 @@ fromFile file =
 
         typedDeclarations : Result (List DeadEnd) (List (TypedNode TypedDeclaration))
         typedDeclarations =
-            inferDeclarations { label = 0 } declarations
+            declarations |> inferDeclarations { label = 0 }
     in
     case typedDeclarations of
         Ok decls ->

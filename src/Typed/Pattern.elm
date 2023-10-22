@@ -18,7 +18,11 @@ fromNodePattern env_ (Node range_ node) =
     in
     case node of
         IntPattern int ->
-            Ok (TypedNode { range = range_, type_ = Int, env = countEnv env_ } (TypedIntPattern int))
+            Ok
+                (TypedNode
+                    { range = range_, type_ = Int, env = env_ |> countEnv }
+                    (TypedIntPattern int)
+                )
 
         _ ->
             Err [ DeadEnd row column (Problem "Unsupported pattern") ]

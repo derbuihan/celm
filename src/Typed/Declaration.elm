@@ -31,7 +31,10 @@ fromNodeDeclaration env_ (Node range_ node) =
                     typedPattern
                         |> Result.andThen (\p -> fromNodeExpression (p |> env) expr_)
             in
-            Result.map2 (\p e -> TypedNode { range = range_, type_ = type_ e, env = e |> env |> countEnv } (TypedDestructuring p e)) typedPattern typedExpression
+            Result.map2
+                (\p e -> TypedNode { range = range_, type_ = type_ e, env = e |> env |> countEnv } (TypedDestructuring p e))
+                typedPattern
+                typedExpression
 
         FunctionDeclaration func ->
             let

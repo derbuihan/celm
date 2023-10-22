@@ -43,10 +43,6 @@ type alias TypedFunctionImplementation =
 fromLetBlock : Env -> LetBlock -> Result (List DeadEnd) TypedLetBlock
 fromLetBlock env_ letb =
     let
-        declarations : Result (List DeadEnd) (List (TypedNode TypedLetDeclaration))
-        declarations =
-            inferLetDeclarations env_ letb.declarations
-
         inferLetDeclarations : Env -> List (Node LetDeclaration) -> Result (List DeadEnd) (List (TypedNode TypedLetDeclaration))
         inferLetDeclarations env__ decls =
             case decls of
@@ -62,14 +58,31 @@ fromLetBlock env_ letb =
                     case typedDecl of
                         Ok typedDecl_ ->
                             Result.map (\typedDecls_ -> typedDecl_ :: typedDecls_)
-                                (inferLetDeclarations (typedDecl_ |> env |> countEnv) decls_)
+                                (inferLetDeclarations (typedDecl_ |> env) decls_)
 
                         Err deadEnds ->
                             Err deadEnds
 
+        declarations : Result (List DeadEnd) (List (TypedNode TypedLetDeclaration))
+        declarations =
+            inferLetDeclarations env_ letb.declarations
+
+        lastEnv : Result (List DeadEnd) Env
+        lastEnv =
+            declarations
+                |> Result.map
+                    (\decls_ ->
+                        decls_
+                            |> List.reverse
+                            |> List.head
+                            |> Maybe.map (\decl_ -> decl_ |> env)
+                            |> Maybe.withDefault env_
+                    )
+
         expression : Result (List DeadEnd) (TypedNode TypedExpression)
         expression =
-            fromNodeExpression env_ letb.expression
+            lastEnv
+                |> Result.andThen (\env__ -> fromNodeExpression env__ letb.expression)
     in
     case ( declarations, expression ) of
         ( Ok decls_, Ok expr_ ) ->
@@ -84,6 +97,10 @@ fromLetBlock env_ letb =
 
 fromNodeLetDeclaration : Env -> Node LetDeclaration -> Result (List DeadEnd) (TypedNode TypedLetDeclaration)
 fromNodeLetDeclaration env_ (Node range_ letdecl) =
+    let
+        { row, column } =
+            range_.start
+    in
     case letdecl of
         LetFunction func ->
             let
@@ -103,7 +120,7 @@ fromNodeLetDeclaration env_ (Node range_ letdecl) =
                 typedFunction
 
         _ ->
-            Err [ DeadEnd range_.start.row range_.start.column (Problem "Type: Unsupported let declaration") ]
+            Err [ DeadEnd row column (Problem "Type: Unsupported let declaration") ]
 
 
 fromNodeExpression : Env -> Node Expression -> Result (List DeadEnd) (TypedNode TypedExpression)
@@ -181,10 +198,18 @@ fromNodeExpression env_ (Node range_ expr) =
             case ( condNode, thenNode, elseNode ) of
                 ( Ok (TypedNode cm cond_), Ok (TypedNode tm then__), Ok (TypedNode em else__) ) ->
                     if cm.type_ == Bool && tm.type_ == em.type_ then
-                        Ok (TypedNode { range = range_, type_ = tm.type_, env = em.env |> countEnv } (TypedIfBlock (TypedNode cm cond_) (TypedNode tm then__) (TypedNode em else__)))
+                        Ok
+                            (TypedNode
+                                { range = range_, type_ = tm.type_, env = em.env |> countEnv }
+                                (TypedIfBlock (TypedNode cm cond_) (TypedNode tm then__) (TypedNode em else__))
+                            )
 
                     else
-                        Err [ DeadEnd row column (Problem "Type: If block condition must be a boolean and then and else must be of the same type") ]
+                        Err
+                            [ DeadEnd row
+                                column
+                                (Problem "Type: If block condition must be a boolean and then and else must be of the same type")
+                            ]
 
                 ( Err err, _, _ ) ->
                     Err err
@@ -196,7 +221,10 @@ fromNodeExpression env_ (Node range_ expr) =
                     Err err
 
         Integer int ->
-            Ok (TypedNode { range = range_, type_ = Int, env = env_ |> countEnv } (TypedInteger int))
+            Ok
+                (TypedNode { range = range_, type_ = Int, env = env_ |> countEnv }
+                    (TypedInteger int)
+                )
 
         Negation node ->
             let
@@ -207,7 +235,10 @@ fromNodeExpression env_ (Node range_ expr) =
             case typedExpression of
                 Ok (TypedNode nm node_) ->
                     if nm.type_ == Int then
-                        Ok (TypedNode { range = range_, type_ = Int, env = nm.env |> countEnv } (TypedNegation (TypedNode nm node_)))
+                        Ok
+                            (TypedNode { range = range_, type_ = Int, env = nm.env |> countEnv }
+                                (TypedNegation (TypedNode nm node_))
+                            )
 
                     else
                         Err [ DeadEnd row column (Problem "Type: Negation must be applied to an integer") ]
@@ -221,7 +252,12 @@ fromNodeExpression env_ (Node range_ expr) =
                 typedExpression =
                     fromNodeExpression env_ node
             in
-            Result.map (\node_ -> TypedNode { range = range_, type_ = type_ node_, env = node_ |> env |> countEnv } (TypedParenthesizedExpression node_)) typedExpression
+            Result.map
+                (\node_ ->
+                    TypedNode { range = range_, type_ = type_ node_, env = node_ |> env |> countEnv }
+                        (TypedParenthesizedExpression node_)
+                )
+                typedExpression
 
         LetExpression letblock ->
             let
@@ -266,11 +302,13 @@ fromNodeFunctionImplementation env_ (Node range_ node) =
 
         exprNode : Result (List DeadEnd) (TypedNode TypedExpression)
         exprNode =
-            fromNodeExpression env_ node.expression
+            nameNode |> Result.andThen (\(TypedNode nm _) -> fromNodeExpression nm.env node.expression)
     in
     Result.map2
         (\name_ expr_ ->
-            TypedNode { range = range_, type_ = type_ expr_, env = expr_ |> env |> countEnv } (TypedFunctionImplementation name_ expr_)
+            TypedNode
+                { range = range_, type_ = type_ expr_, env = expr_ |> env |> countEnv }
+                (TypedFunctionImplementation name_ expr_)
         )
         nameNode
         exprNode
