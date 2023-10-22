@@ -240,7 +240,32 @@ genNodeExpression (TypedNode meta expr) =
 
 genNodeFunctionImplementation : TypedNode TypedFunctionImplementation -> Result (List DeadEnd) String
 genNodeFunctionImplementation (TypedNode _ func) =
-    genNodeExpression func.expression
+    let
+        name : String
+        name =
+            func.name |> value
+
+        expression : TypedNode TypedExpression
+        expression =
+            func.expression
+    in
+    genNodeExpression expression
+        |> Result.map
+            (\expr ->
+                [ "    .text"
+                , "    .globl _" ++ name
+                , "    .align 2"
+                , "_" ++ name ++ ":"
+                , "    stp x29, x30, [sp, -16]!"
+                , "    mov x29, sp"
+                , "    sub sp, sp, 416"
+                , expr
+                , "    mov sp, x29"
+                , "    ldp x29, x30, [sp], 16"
+                , "    ret"
+                ]
+                    |> String.join "\n"
+            )
 
 
 genNodeDeclaration : TypedNode TypedDeclaration -> Result (List DeadEnd) String
@@ -256,24 +281,9 @@ genNodeDeclaration (TypedNode _ decl) =
 generate : TypedFile -> Result (List DeadEnd) String
 generate ast =
     let
-        declarations : Result (List DeadEnd) String
+        declarations : Result (List DeadEnd) (List String)
         declarations =
-            case ast.declarations of
-                [] ->
-                    Err [ DeadEnd 0 0 UnexpectedChar ]
-
-                x :: _ ->
-                    genNodeDeclaration x
+            ast.declarations
+                |> Result.combineMap genNodeDeclaration
     in
-    Result.map
-        (\x ->
-            [ ".text"
-            , "    .globl _main"
-            , "    .align 2"
-            , "_main:"
-            , x
-            , "    ret"
-            ]
-                |> String.join "\n"
-        )
-        declarations
+    declarations |> Result.map (\decls -> decls |> String.join "\n")
