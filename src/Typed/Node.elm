@@ -1,5 +1,6 @@
-module Typed.Node exposing (Env, Meta, Type(..), TypedNode(..), countEnv, env, meta, range, type_, value)
+module Typed.Node exposing (Env, Meta, Type(..), TypedNode(..), addRequiredVariable, countLabel, env, initEnv, meta, range, resetRequiredVariables, type_, value)
 
+import Dict
 import Elm.Syntax.Range exposing (Range)
 
 
@@ -11,6 +12,7 @@ type Type
 
 type alias Env =
     { label : Int
+    , required_variables : Dict.Dict String Type
     }
 
 
@@ -50,6 +52,23 @@ meta (TypedNode m _) =
     m
 
 
-countEnv : Env -> Env
-countEnv env_ =
+initEnv : Env
+initEnv =
+    { label = 0
+    , required_variables = Dict.empty
+    }
+
+
+countLabel : Env -> Env
+countLabel env_ =
     { env_ | label = env_.label + 1 }
+
+
+addRequiredVariable : String -> Type -> Env -> Env
+addRequiredVariable name t env_ =
+    { env_ | required_variables = Dict.insert name t env_.required_variables }
+
+
+resetRequiredVariables : Env -> Env
+resetRequiredVariables env_ =
+    { env_ | required_variables = Dict.empty }

@@ -4,7 +4,7 @@ import Elm.Syntax.Declaration exposing (Declaration(..))
 import Elm.Syntax.Node exposing (Node(..))
 import Parser exposing (DeadEnd, Problem(..))
 import Typed.Expression exposing (TypedExpression, TypedFunction, fromFunction, fromNodeExpression)
-import Typed.Node exposing (Env, Type(..), TypedNode(..), countEnv, env, type_)
+import Typed.Node exposing (Env, Type(..), TypedNode(..), countLabel, env, type_)
 import Typed.Pattern exposing (TypedPattern, fromNodePattern)
 
 
@@ -32,7 +32,7 @@ fromNodeDeclaration env_ (Node range_ node) =
                         |> Result.andThen (\p -> fromNodeExpression (p |> env) expr_)
             in
             Result.map2
-                (\p e -> TypedNode { range = range_, type_ = type_ e, env = e |> env |> countEnv } (TypedDestructuring p e))
+                (\p e -> TypedNode { range = range_, type_ = type_ e, env = e |> env |> countLabel } (TypedDestructuring p e))
                 typedPattern
                 typedExpression
 
@@ -43,7 +43,7 @@ fromNodeDeclaration env_ (Node range_ node) =
                     fromFunction env_ func
             in
             Result.map
-                (\f -> TypedNode { range = range_, type_ = Unit, env = f.declaration |> env |> countEnv } (TypedFunctionDeclaration f))
+                (\f -> TypedNode { range = range_, type_ = Unit, env = f.declaration |> env |> countLabel } (TypedFunctionDeclaration f))
                 typedFunction
 
         _ ->

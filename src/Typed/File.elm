@@ -5,7 +5,7 @@ import Elm.Syntax.File exposing (File)
 import Elm.Syntax.Node exposing (Node)
 import Parser exposing (DeadEnd)
 import Typed.Declaration exposing (TypedDeclaration, fromNodeDeclaration)
-import Typed.Node exposing (Env, TypedNode, countEnv, env)
+import Typed.Node exposing (Env, TypedNode, countLabel, env, initEnv)
 
 
 type alias TypedFile =
@@ -35,14 +35,14 @@ fromFile file =
                     case typedDecl of
                         Ok typedDecl_ ->
                             Result.map (\typedDecls_ -> typedDecl_ :: typedDecls_)
-                                (inferDeclarations (typedDecl_ |> env |> countEnv) decls_)
+                                (inferDeclarations (typedDecl_ |> env |> countLabel) decls_)
 
                         Err deadEnds ->
                             Err deadEnds
 
         typedDeclarations : Result (List DeadEnd) (List (TypedNode TypedDeclaration))
         typedDeclarations =
-            declarations |> inferDeclarations { label = 0 }
+            declarations |> inferDeclarations initEnv
     in
     case typedDeclarations of
         Ok decls ->

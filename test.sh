@@ -3,8 +3,10 @@ function test() {
 
     cat > ${elm_file}
     node ./src/app.js ${elm_file}
-    gcc -o ./output/tmp ./output/tmp.s
-    ./output/tmp;
+
+    filname=$(basename ${elm_file} | sed -e "s/\.elm//g")
+    gcc -o ./output/${filname} ./output/${filname}.s
+    ./output/${filname};
     ret=$?
 
     if [ "$ret" == "$1" ]; then
@@ -15,7 +17,7 @@ function test() {
         exit 1
     fi
 
-    rm ${elm_file}
+    rm ${elm_file} ./output/${filname}*;
 }
 
 test 42 <<EOF
@@ -269,5 +271,18 @@ test 22 <<EOF
 module Main exposing (main)
 main = if False then 11 else 22
 EOF
+
+test 41 <<EOF
+module Main exposing (main)
+main = let
+    e = d * 3 + a
+    b = a + 22
+    a = 11
+    d = c / 2 
+    c = b - 13
+in
+    e
+EOF
+
 
 echo "ALL OK"

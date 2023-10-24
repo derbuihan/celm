@@ -3,7 +3,7 @@ module Typed.Pattern exposing (TypedPattern(..), fromNodePattern)
 import Elm.Syntax.Node exposing (Node(..))
 import Elm.Syntax.Pattern exposing (Pattern(..))
 import Parser exposing (DeadEnd, Problem(..))
-import Typed.Node exposing (Env, Type(..), TypedNode(..), countEnv)
+import Typed.Node exposing (Env, Type(..), TypedNode(..), countLabel)
 
 
 type TypedPattern
@@ -20,7 +20,7 @@ fromNodePattern env_ (Node range_ node) =
         IntPattern int ->
             Ok
                 (TypedNode
-                    { range = range_, type_ = Int, env = env_ |> countEnv }
+                    { range = range_, type_ = Int, env = env_ |> countLabel }
                     (TypedIntPattern int)
                 )
 

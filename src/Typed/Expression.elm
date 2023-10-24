@@ -5,7 +5,7 @@ import Elm.Syntax.Infix exposing (InfixDirection)
 import Elm.Syntax.Node exposing (Node(..))
 import Parser exposing (DeadEnd, Problem(..))
 import Typed.ModuleName exposing (TypedModuleName)
-import Typed.Node exposing (Env, Type(..), TypedNode(..), countEnv, env, type_)
+import Typed.Node exposing (Env, Type(..), TypedNode(..), addRequiredVariable, countLabel, env, resetRequiredVariables, type_, value)
 
 
 type TypedExpression
@@ -58,7 +58,7 @@ fromLetBlock env_ letb =
                     case typedDecl of
                         Ok typedDecl_ ->
                             Result.map (\typedDecls_ -> typedDecl_ :: typedDecls_)
-                                (inferLetDeclarations (typedDecl_ |> env) decls_)
+                                (inferLetDeclarations (typedDecl_ |> env |> resetRequiredVariables) decls_)
 
                         Err deadEnds ->
                             Err deadEnds
@@ -78,6 +78,7 @@ fromLetBlock env_ letb =
                             |> Maybe.map (\decl_ -> decl_ |> env)
                             |> Maybe.withDefault env_
                     )
+                |> Result.map resetRequiredVariables
 
         expression : Result (List DeadEnd) (TypedNode TypedExpression)
         expression =
@@ -113,7 +114,7 @@ fromNodeLetDeclaration env_ (Node range_ letdecl) =
                     TypedNode
                         { range = range_
                         , type_ = func_.declaration |> type_
-                        , env = func_.declaration |> env |> countEnv
+                        , env = func_.declaration |> env |> countLabel
                         }
                         (TypedLetFunction func_)
                 )
@@ -131,7 +132,7 @@ fromNodeExpression env_ (Node range_ expr) =
     in
     case expr of
         UnitExpr ->
-            Ok (TypedNode { range = range_, type_ = Unit, env = env_ |> countEnv } TypedUnitExpr)
+            Ok (TypedNode { range = range_, type_ = Unit, env = env_ |> countLabel } TypedUnitExpr)
 
         OperatorApplication op dir left right ->
             let
@@ -149,17 +150,17 @@ fromNodeExpression env_ (Node range_ expr) =
                     case ( lm.type_, rm.type_ ) of
                         ( Int, Int ) ->
                             if List.member op [ "+", "-", "*", "/" ] then
-                                Ok (TypedNode { range = range_, type_ = Int, env = rm.env |> countEnv } (TypedOperatorApplication op dir (TypedNode lm lhs) (TypedNode rm rhs)))
+                                Ok (TypedNode { range = range_, type_ = Int, env = rm.env |> countLabel } (TypedOperatorApplication op dir (TypedNode lm lhs) (TypedNode rm rhs)))
 
                             else if List.member op [ "==", "/=", "<", ">", "<=", ">=" ] then
-                                Ok (TypedNode { range = range_, type_ = Bool, env = rm.env |> countEnv } (TypedOperatorApplication op dir (TypedNode lm lhs) (TypedNode rm rhs)))
+                                Ok (TypedNode { range = range_, type_ = Bool, env = rm.env |> countLabel } (TypedOperatorApplication op dir (TypedNode lm lhs) (TypedNode rm rhs)))
 
                             else
                                 Err [ DeadEnd row column (Problem "Type: Unsupported operator application") ]
 
                         ( Bool, Bool ) ->
                             if List.member op [ "==", "/=", "<", ">", "<=", ">=" ] then
-                                Ok (TypedNode { range = range_, type_ = Bool, env = rm.env |> countEnv } (TypedOperatorApplication op dir (TypedNode lm lhs) (TypedNode rm rhs)))
+                                Ok (TypedNode { range = range_, type_ = Bool, env = rm.env |> countLabel } (TypedOperatorApplication op dir (TypedNode lm lhs) (TypedNode rm rhs)))
 
                             else
                                 Err [ DeadEnd row column (Problem "Type: Unsupported operator application") ]
@@ -167,21 +168,25 @@ fromNodeExpression env_ (Node range_ expr) =
                         _ ->
                             Err [ DeadEnd row column (Problem "Type: Unsupported operator application") ]
 
-                ( Ok _, Err rhs_ ) ->
-                    Err rhs_
+                ( _, Err err ) ->
+                    Err err
 
-                ( Err lhs_, Ok _ ) ->
-                    Err lhs_
-
-                ( Err lhs_, Err rhs_ ) ->
-                    Err (lhs_ ++ rhs_)
+                ( Err err, _ ) ->
+                    Err err
 
         FunctionOrValue moduleName name ->
             if name == "True" || name == "False" then
-                Ok (TypedNode { range = range_, type_ = Bool, env = env_ |> countEnv } (TypedFunctionOrValue moduleName name))
+                Ok (TypedNode { range = range_, type_ = Bool, env = env_ |> countLabel } (TypedFunctionOrValue moduleName name))
 
             else
-                Ok (TypedNode { range = range_, type_ = Int, env = env_ |> countEnv } (TypedFunctionOrValue moduleName name))
+                Ok
+                    (TypedNode
+                        { range = range_
+                        , type_ = Int
+                        , env = env_ |> countLabel |> addRequiredVariable name Int
+                        }
+                        (TypedFunctionOrValue moduleName name)
+                    )
 
         IfBlock cond then_ else_ ->
             let
@@ -204,7 +209,7 @@ fromNodeExpression env_ (Node range_ expr) =
                     if cm.type_ == Bool && tm.type_ == em.type_ then
                         Ok
                             (TypedNode
-                                { range = range_, type_ = tm.type_, env = em.env |> countEnv }
+                                { range = range_, type_ = tm.type_, env = em.env |> countLabel }
                                 (TypedIfBlock (TypedNode cm cond_) (TypedNode tm then__) (TypedNode em else__))
                             )
 
@@ -226,7 +231,7 @@ fromNodeExpression env_ (Node range_ expr) =
 
         Integer int ->
             Ok
-                (TypedNode { range = range_, type_ = Int, env = env_ |> countEnv }
+                (TypedNode { range = range_, type_ = Int, env = env_ |> countLabel }
                     (TypedInteger int)
                 )
 
@@ -240,7 +245,7 @@ fromNodeExpression env_ (Node range_ expr) =
                 Ok (TypedNode nm node_) ->
                     if nm.type_ == Int then
                         Ok
-                            (TypedNode { range = range_, type_ = Int, env = nm.env |> countEnv }
+                            (TypedNode { range = range_, type_ = Int, env = nm.env |> countLabel }
                                 (TypedNegation (TypedNode nm node_))
                             )
 
@@ -258,7 +263,7 @@ fromNodeExpression env_ (Node range_ expr) =
             in
             Result.map
                 (\node_ ->
-                    TypedNode { range = range_, type_ = type_ node_, env = node_ |> env |> countEnv }
+                    TypedNode { range = range_, type_ = type_ node_, env = node_ |> env |> countLabel }
                         (TypedParenthesizedExpression node_)
                 )
                 typedExpression
@@ -275,13 +280,13 @@ fromNodeExpression env_ (Node range_ expr) =
                         (TypedNode
                             { range = range_
                             , type_ = typedLetBlock_.expression |> type_
-                            , env = typedLetBlock_.expression |> env |> countEnv
+                            , env = typedLetBlock_.expression |> env |> countLabel |> resetRequiredVariables
                             }
                             (TypedLetExpression typedLetBlock_)
                         )
 
-                Err deadEnds ->
-                    Err deadEnds
+                Err err ->
+                    Err err
 
         _ ->
             Err [ DeadEnd row column (Problem "Type: Unsupported expression") ]
@@ -311,7 +316,7 @@ fromNodeFunctionImplementation env_ (Node range_ node) =
     Result.map2
         (\name_ expr_ ->
             TypedNode
-                { range = range_, type_ = type_ expr_, env = expr_ |> env |> countEnv }
+                { range = range_, type_ = type_ expr_, env = expr_ |> env |> countLabel }
                 (TypedFunctionImplementation name_ expr_)
         )
         nameNode
@@ -320,4 +325,4 @@ fromNodeFunctionImplementation env_ (Node range_ node) =
 
 fromNodeString : Env -> Node String -> Result (List DeadEnd) (TypedNode String)
 fromNodeString env_ (Node range_ str) =
-    Ok (TypedNode { range = range_, type_ = Int, env = env_ |> countEnv } str)
+    Ok (TypedNode { range = range_, type_ = Int, env = env_ |> countLabel } str)

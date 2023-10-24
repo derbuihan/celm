@@ -1,11 +1,14 @@
 module Generate exposing (generate)
 
+import Dict exposing (keys)
+import Graph exposing (AcyclicGraph, Graph, checkAcyclic, fromNodeLabelsAndEdgePairs, topologicalSort)
+import List.Extra exposing (elemIndex)
 import Parser exposing (DeadEnd, Problem(..))
 import Result.Extra as Result
 import Typed.Declaration exposing (TypedDeclaration(..))
 import Typed.Expression exposing (TypedExpression(..), TypedFunctionImplementation, TypedLetDeclaration(..))
 import Typed.File exposing (TypedFile)
-import Typed.Node exposing (TypedNode(..), env, value)
+import Typed.Node exposing (TypedNode(..), env, meta, value)
 
 
 push : String
@@ -61,10 +64,10 @@ genNodeLetDeclaration (TypedNode _ decl) =
 
 
 genNodeExpression : TypedNode TypedExpression -> Result (List DeadEnd) String
-genNodeExpression (TypedNode meta expr) =
+genNodeExpression (TypedNode meta_ expr) =
     let
         { row, column } =
-            meta.range.start
+            meta_.range.start
     in
     case expr of
         TypedOperatorApplication opName _ lhsNode rhsNode ->
@@ -214,11 +217,50 @@ genNodeExpression (TypedNode meta expr) =
 
         TypedLetExpression letblock ->
             let
+                variables =
+                    letblock.declarations
+                        |> List.map value
+                        |> List.map (\(TypedLetFunction func) -> func.declaration)
+                        |> List.map value
+                        |> List.map .name
+                        |> List.map value
+
+                dependences =
+                    letblock.declarations
+                        |> List.map value
+                        |> List.map (\(TypedLetFunction func) -> func.declaration)
+                        |> List.indexedMap
+                            (\i x ->
+                                x
+                                    |> meta
+                                    |> .env
+                                    |> .required_variables
+                                    |> keys
+                                    |> List.map (\y -> elemIndex y variables |> Maybe.map (\z -> ( z, i )))
+                            )
+                        |> List.concat
+                        |> List.filterMap identity
+
+                graph : Graph (TypedNode TypedLetDeclaration) ()
+                graph =
+                    fromNodeLabelsAndEdgePairs
+                        letblock.declarations
+                        dependences
+
+                acyclicGraph : Result (List DeadEnd) (AcyclicGraph (TypedNode TypedLetDeclaration) ())
+                acyclicGraph =
+                    checkAcyclic graph
+                        |> Result.mapError (\_ -> [ DeadEnd row column (Problem "Gen: Cyclic dependency") ])
+
+                sortedDeclaration : Result (List DeadEnd) (List (TypedNode TypedLetDeclaration))
+                sortedDeclaration =
+                    acyclicGraph
+                        |> Result.map topologicalSort
+                        |> Result.map (\nodes -> nodes |> List.map .node |> List.map .label)
+
                 declarations : Result (List DeadEnd) (List String)
                 declarations =
-                    Result.combineMap
-                        genNodeLetDeclaration
-                        letblock.declarations
+                    sortedDeclaration |> Result.andThen (Result.combineMap genNodeLetDeclaration)
 
                 expression : Result (List DeadEnd) String
                 expression =
