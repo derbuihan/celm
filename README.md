@@ -14,10 +14,13 @@ main = 3 + 4 * 3
 celm compiles the above code into the following assembly instruction sequence:
 
 ```
-.text
+    .text
     .globl _main
     .align 2
 _main:
+    stp x29, x30, [sp, -16]!
+    mov x29, sp
+    sub sp, sp, 416
     mov x0, 3
     str x0, [sp, -16]!
     mov x0, 4
@@ -27,6 +30,8 @@ _main:
     mov x0, 3
     ldr x1, [sp], 16
     add x0, x0, x1
+    mov sp, x29
+    ldp x29, x30, [sp], 16
     ret
 ```
 
