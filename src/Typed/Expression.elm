@@ -5,7 +5,7 @@ import Elm.Syntax.Infix exposing (InfixDirection)
 import Elm.Syntax.Node exposing (Node(..))
 import Parser exposing (DeadEnd, Problem(..))
 import Typed.ModuleName exposing (TypedModuleName)
-import Typed.Node exposing (Env, Type(..), TypedNode(..), addRequiredVariable, countLabel, env, resetRequiredVariables, type_, value)
+import Typed.Node exposing (Env, Type(..), TypedNode(..), addRequiredVariable, countLabel, env, getLastEnv, inferNodes, resetRequiredVariables, type_, value)
 
 
 type TypedExpression
@@ -43,46 +43,21 @@ type alias TypedFunctionImplementation =
 fromLetBlock : Env -> LetBlock -> Result (List DeadEnd) TypedLetBlock
 fromLetBlock env_ letb =
     let
-        inferLetDeclarations : Env -> List (Node LetDeclaration) -> Result (List DeadEnd) (List (TypedNode TypedLetDeclaration))
-        inferLetDeclarations env__ decls =
-            case decls of
-                [] ->
-                    Ok []
-
-                decl :: decls_ ->
-                    let
-                        typedDecl : Result (List DeadEnd) (TypedNode TypedLetDeclaration)
-                        typedDecl =
-                            fromNodeLetDeclaration env__ decl
-                    in
-                    case typedDecl of
-                        Ok typedDecl_ ->
-                            Result.map (\typedDecls_ -> typedDecl_ :: typedDecls_)
-                                (inferLetDeclarations (typedDecl_ |> env |> resetRequiredVariables) decls_)
-
-                        Err deadEnds ->
-                            Err deadEnds
-
         declarations : Result (List DeadEnd) (List (TypedNode TypedLetDeclaration))
         declarations =
-            inferLetDeclarations env_ letb.declarations
+            letb.declarations
+                |> inferNodes fromNodeLetDeclaration env_
 
         lastEnv : Result (List DeadEnd) Env
         lastEnv =
             declarations
-                |> Result.map
-                    (\decls_ ->
-                        decls_
-                            |> List.reverse
-                            |> List.head
-                            |> Maybe.map (\decl_ -> decl_ |> env)
-                            |> Maybe.withDefault env_
-                    )
-                |> Result.map resetRequiredVariables
+                |> Result.map getLastEnv
+                |> Result.map (Maybe.withDefault env_)
 
         expression : Result (List DeadEnd) (TypedNode TypedExpression)
         expression =
             lastEnv
+                |> Result.map resetRequiredVariables
                 |> Result.andThen (\env__ -> fromNodeExpression env__ letb.expression)
     in
     case ( declarations, expression ) of
@@ -109,16 +84,16 @@ fromNodeLetDeclaration env_ (Node range_ letdecl) =
                 typedFunction =
                     fromFunction env_ func
             in
-            Result.map
-                (\func_ ->
-                    TypedNode
-                        { range = range_
-                        , type_ = func_.declaration |> type_
-                        , env = func_.declaration |> env |> countLabel
-                        }
-                        (TypedLetFunction func_)
-                )
-                typedFunction
+            typedFunction
+                |> Result.map
+                    (\func_ ->
+                        TypedNode
+                            { range = range_
+                            , type_ = func_.declaration |> type_
+                            , env = func_.declaration |> env |> countLabel
+                            }
+                            (TypedLetFunction func_)
+                    )
 
         _ ->
             Err [ DeadEnd row column (Problem "Type: Unsupported let declaration") ]

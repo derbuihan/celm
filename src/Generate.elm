@@ -57,6 +57,7 @@ genNodeLetDeclaration (TypedNode _ decl) =
                         )
                         codeExpr
 
+                code : Result (List DeadEnd) String
                 code =
                     genNodeFuncImpl func.declaration
             in
