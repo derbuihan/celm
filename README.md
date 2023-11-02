@@ -40,7 +40,6 @@ _main:
 You can get started with the celm experiment by first cloning the necessary repositories.
 
 ```bash
-git clone git@github.com:derbuihan/elm-syntax.git
 git clone git@github.com:derbuihan/celm.git
 cd celm
 npm install
