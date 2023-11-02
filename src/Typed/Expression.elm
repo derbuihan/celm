@@ -1,11 +1,13 @@
-module Typed.Expression exposing (TypedExpression(..), TypedFunction, TypedFunctionImplementation, TypedLetDeclaration(..), fromFunction, fromNodeExpression)
+module Typed.Expression exposing (TypedExpression(..), TypedFunction, TypedFunctionImplementation, TypedLetDeclaration(..), fromFunction, fromNodeExpression, fromNodeLetDeclaration)
 
+import Elm.Syntax.Declaration exposing (Declaration)
 import Elm.Syntax.Expression exposing (Expression(..), Function, FunctionImplementation, LetBlock, LetDeclaration(..))
 import Elm.Syntax.Infix exposing (InfixDirection)
 import Elm.Syntax.Node exposing (Node(..))
+import List.Extra as List
 import Parser exposing (DeadEnd, Problem(..))
 import Typed.ModuleName exposing (TypedModuleName)
-import Typed.Node exposing (Env, Type(..), TypedNode(..), addRequiredVariable, countLabel, env, getLastEnv, inferNodes, resetRequiredVariables, type_, value)
+import Typed.Node exposing (Env, Type(..), TypedNode(..), addRequiredVariable, countLabel, env, getLastEnv, inferNodes, insertOffset, resetOffsets, resetRequiredVariables, type_, value)
 
 
 type TypedExpression
@@ -40,38 +42,77 @@ type alias TypedFunctionImplementation =
     }
 
 
-fromLetBlock : Env -> LetBlock -> Result (List DeadEnd) TypedLetBlock
-fromLetBlock env_ letb =
+inferLetDeclarations : Env -> List (Node LetDeclaration) -> Result (List DeadEnd) (List ( Env, TypedNode TypedLetDeclaration ))
+inferLetDeclarations env_ decls =
+    case decls of
+        [] ->
+            Ok []
+
+        decl :: decls_ ->
+            case decl of
+                Node _ (LetFunction func) ->
+                    let
+                        name : String
+                        name =
+                            func.declaration |> (\(Node _ decl_) -> decl_.name) |> (\(Node _ name_) -> name_)
+
+                        typedDecl : Result (List DeadEnd) ( Env, TypedNode TypedLetDeclaration )
+                        typedDecl =
+                            fromNodeLetDeclaration (env_ |> insertOffset name |> resetRequiredVariables) decl
+
+                        lastEnv : Result (List DeadEnd) Env
+                        lastEnv =
+                            typedDecl |> Result.map Tuple.first
+                    in
+                    case ( lastEnv, typedDecl ) of
+                        ( Ok lastEnv_, Ok ( _, decl_ ) ) ->
+                            Result.map (\typedDecls_ -> ( lastEnv_, decl_ ) :: typedDecls_) (inferLetDeclarations lastEnv_ decls_)
+
+                        ( Err err, _ ) ->
+                            Err err
+
+                        ( _, Err err ) ->
+                            Err err
+
+                Node _ (LetDestructuring _ _) ->
+                    Err [ DeadEnd 0 0 (Problem "Type: Destructuring is not supported") ]
+
+
+fromLetBlock : Env -> LetBlock -> Result (List DeadEnd) ( Env, TypedLetBlock )
+fromLetBlock env_ letBlock =
     let
-        declarations : Result (List DeadEnd) (List (TypedNode TypedLetDeclaration))
+        declarations : Result (List DeadEnd) ( List Env, List (TypedNode TypedLetDeclaration) )
         declarations =
-            letb.declarations
-                |> inferNodes fromNodeLetDeclaration env_
+            inferLetDeclarations env_ letBlock.declarations |> Result.map List.unzip
+
+        declsLastEnv : Result (List DeadEnd) Env
+        declsLastEnv =
+            declarations |> Result.map (Tuple.first >> List.last >> Maybe.withDefault env_ >> resetRequiredVariables)
+
+        expression : Result (List DeadEnd) ( Env, TypedNode TypedExpression )
+        expression =
+            declsLastEnv
+                |> Result.andThen (\env__ -> fromNodeExpression env__ letBlock.expression)
 
         lastEnv : Result (List DeadEnd) Env
         lastEnv =
-            declarations
-                |> Result.map getLastEnv
-                |> Result.map (Maybe.withDefault env_)
-
-        expression : Result (List DeadEnd) (TypedNode TypedExpression)
-        expression =
-            lastEnv
-                |> Result.map resetRequiredVariables
-                |> Result.andThen (\env__ -> fromNodeExpression env__ letb.expression)
+            expression |> Result.map (Tuple.first >> resetRequiredVariables)
     in
-    case ( declarations, expression ) of
-        ( Ok decls_, Ok expr_ ) ->
-            Ok { declarations = decls_, expression = expr_ }
+    case ( lastEnv, declarations, expression ) of
+        ( Ok lastEnv_, Ok ( _, decls_ ), Ok ( _, expr_ ) ) ->
+            Ok ( lastEnv_, { declarations = decls_, expression = expr_ } )
 
-        ( Err decls_, _ ) ->
-            Err decls_
+        ( Err err, _, _ ) ->
+            Err err
 
-        ( _, Err expr_ ) ->
-            Err expr_
+        ( _, Err err, _ ) ->
+            Err err
+
+        ( _, _, Err err ) ->
+            Err err
 
 
-fromNodeLetDeclaration : Env -> Node LetDeclaration -> Result (List DeadEnd) (TypedNode TypedLetDeclaration)
+fromNodeLetDeclaration : Env -> Node LetDeclaration -> Result (List DeadEnd) ( Env, TypedNode TypedLetDeclaration )
 fromNodeLetDeclaration env_ (Node range_ letdecl) =
     let
         { row, column } =
@@ -80,26 +121,38 @@ fromNodeLetDeclaration env_ (Node range_ letdecl) =
     case letdecl of
         LetFunction func ->
             let
-                typedFunction : Result (List DeadEnd) TypedFunction
+                typedFunction : Result (List DeadEnd) ( Env, TypedFunction )
                 typedFunction =
                     fromFunction env_ func
+
+                funcEnv : Result (List DeadEnd) Env
+                funcEnv =
+                    typedFunction |> Result.map Tuple.first
+
+                lastEnv : Result (List DeadEnd) Env
+                lastEnv =
+                    funcEnv |> Result.map countLabel
             in
-            typedFunction
-                |> Result.map
-                    (\func_ ->
-                        TypedNode
-                            { range = range_
-                            , type_ = func_.declaration |> type_
-                            , env = func_.declaration |> env |> countLabel
-                            }
+            case ( lastEnv, typedFunction ) of
+                ( Ok lastEnv_, Ok ( _, func_ ) ) ->
+                    Ok
+                        ( lastEnv_
+                        , TypedNode
+                            { range = range_, type_ = func_.declaration |> type_, env = lastEnv_ }
                             (TypedLetFunction func_)
-                    )
+                        )
+
+                ( Err err, _ ) ->
+                    Err err
+
+                ( _, Err err ) ->
+                    Err err
 
         _ ->
             Err [ DeadEnd row column (Problem "Type: Unsupported let declaration") ]
 
 
-fromNodeExpression : Env -> Node Expression -> Result (List DeadEnd) (TypedNode TypedExpression)
+fromNodeExpression : Env -> Node Expression -> Result (List DeadEnd) ( Env, TypedNode TypedExpression )
 fromNodeExpression env_ (Node range_ expr) =
     let
         { row, column } =
@@ -107,35 +160,63 @@ fromNodeExpression env_ (Node range_ expr) =
     in
     case expr of
         UnitExpr ->
-            Ok (TypedNode { range = range_, type_ = Unit, env = env_ |> countLabel } TypedUnitExpr)
+            let
+                lastEnv =
+                    env_ |> countLabel
+            in
+            Ok ( lastEnv, TypedNode { range = range_, type_ = Unit, env = lastEnv } TypedUnitExpr )
 
         OperatorApplication op dir left right ->
             let
-                leftNode : Result (List DeadEnd) (TypedNode TypedExpression)
+                leftNode : Result (List DeadEnd) ( Env, TypedNode TypedExpression )
                 leftNode =
                     fromNodeExpression env_ left
 
-                rightNode : Result (List DeadEnd) (TypedNode TypedExpression)
+                leftEnv : Result (List DeadEnd) Env
+                leftEnv =
+                    leftNode |> Result.map (\( env__, _ ) -> env__)
+
+                rightNode : Result (List DeadEnd) ( Env, TypedNode TypedExpression )
                 rightNode =
-                    leftNode
-                        |> Result.andThen (\(TypedNode lm _) -> fromNodeExpression lm.env right)
+                    leftEnv
+                        |> Result.andThen (\env__ -> fromNodeExpression env__ right)
+
+                rightEnv : Result (List DeadEnd) Env
+                rightEnv =
+                    rightNode |> Result.map (\( env__, _ ) -> env__)
+
+                lastEnv : Result (List DeadEnd) Env
+                lastEnv =
+                    rightEnv |> Result.map countLabel
             in
-            case ( leftNode, rightNode ) of
-                ( Ok (TypedNode lm lhs), Ok (TypedNode rm rhs) ) ->
+            case ( lastEnv, leftNode, rightNode ) of
+                ( Ok lastEnv_, Ok ( _, TypedNode lm lhs ), Ok ( _, TypedNode rm rhs ) ) ->
                     case ( lm.type_, rm.type_ ) of
                         ( Int, Int ) ->
                             if List.member op [ "+", "-", "*", "/" ] then
-                                Ok (TypedNode { range = range_, type_ = Int, env = rm.env |> countLabel } (TypedOperatorApplication op dir (TypedNode lm lhs) (TypedNode rm rhs)))
+                                Ok
+                                    ( lastEnv_
+                                    , TypedNode { range = range_, type_ = Int, env = lastEnv_ }
+                                        (TypedOperatorApplication op dir (TypedNode lm lhs) (TypedNode rm rhs))
+                                    )
 
                             else if List.member op [ "==", "/=", "<", ">", "<=", ">=" ] then
-                                Ok (TypedNode { range = range_, type_ = Bool, env = rm.env |> countLabel } (TypedOperatorApplication op dir (TypedNode lm lhs) (TypedNode rm rhs)))
+                                Ok
+                                    ( lastEnv_
+                                    , TypedNode { range = range_, type_ = Bool, env = lastEnv_ }
+                                        (TypedOperatorApplication op dir (TypedNode lm lhs) (TypedNode rm rhs))
+                                    )
 
                             else
                                 Err [ DeadEnd row column (Problem "Type: Unsupported operator application") ]
 
                         ( Bool, Bool ) ->
                             if List.member op [ "==", "/=", "<", ">", "<=", ">=" ] then
-                                Ok (TypedNode { range = range_, type_ = Bool, env = rm.env |> countLabel } (TypedOperatorApplication op dir (TypedNode lm lhs) (TypedNode rm rhs)))
+                                Ok
+                                    ( lastEnv_
+                                    , TypedNode { range = range_, type_ = Bool, env = lastEnv_ }
+                                        (TypedOperatorApplication op dir (TypedNode lm lhs) (TypedNode rm rhs))
+                                    )
 
                             else
                                 Err [ DeadEnd row column (Problem "Type: Unsupported operator application") ]
@@ -143,57 +224,81 @@ fromNodeExpression env_ (Node range_ expr) =
                         _ ->
                             Err [ DeadEnd row column (Problem "Type: Unsupported operator application") ]
 
-                ( _, Err err ) ->
+                ( Err err, _, _ ) ->
                     Err err
 
-                ( Err err, _ ) ->
+                ( _, Err err, _ ) ->
+                    Err err
+
+                ( _, _, Err err ) ->
                     Err err
 
         FunctionOrValue moduleName name ->
             if name == "True" || name == "False" then
-                Ok (TypedNode { range = range_, type_ = Bool, env = env_ |> countLabel } (TypedFunctionOrValue moduleName name))
+                let
+                    lastEnv : Env
+                    lastEnv =
+                        env_ |> countLabel
+                in
+                Ok ( lastEnv, TypedNode { range = range_, type_ = Bool, env = lastEnv } (TypedFunctionOrValue moduleName name) )
 
             else
+                let
+                    lastEnv : Env
+                    lastEnv =
+                        env_ |> countLabel |> addRequiredVariable name Int
+                in
                 Ok
-                    (TypedNode
-                        { range = range_
-                        , type_ = Int
-                        , env = env_ |> countLabel |> addRequiredVariable name Int
-                        }
+                    ( lastEnv
+                    , TypedNode
+                        { range = range_, type_ = Int, env = lastEnv }
                         (TypedFunctionOrValue moduleName name)
                     )
 
         IfBlock cond then_ else_ ->
             let
-                condNode : Result (List DeadEnd) (TypedNode TypedExpression)
+                condNode : Result (List DeadEnd) ( Env, TypedNode TypedExpression )
                 condNode =
                     fromNodeExpression env_ cond
 
-                thenNode : Result (List DeadEnd) (TypedNode TypedExpression)
-                thenNode =
-                    condNode
-                        |> Result.andThen (\(TypedNode cm _) -> fromNodeExpression cm.env then_)
+                condEnv : Result (List DeadEnd) Env
+                condEnv =
+                    condNode |> Result.map (\( env__, _ ) -> env__)
 
-                elseNode : Result (List DeadEnd) (TypedNode TypedExpression)
+                thenNode : Result (List DeadEnd) ( Env, TypedNode TypedExpression )
+                thenNode =
+                    condEnv |> Result.andThen (\env__ -> fromNodeExpression env__ then_)
+
+                thenEnv : Result (List DeadEnd) Env
+                thenEnv =
+                    thenNode |> Result.map (\( env__, _ ) -> env__)
+
+                elseNode : Result (List DeadEnd) ( Env, TypedNode TypedExpression )
                 elseNode =
-                    thenNode
-                        |> Result.andThen (\(TypedNode tm _) -> fromNodeExpression tm.env else_)
+                    thenEnv |> Result.andThen (\env__ -> fromNodeExpression env__ else_)
+
+                elseEnv : Result (List DeadEnd) Env
+                elseEnv =
+                    elseNode |> Result.map (\( env__, _ ) -> env__)
+
+                lastEnv : Result (List DeadEnd) Env
+                lastEnv =
+                    elseEnv |> Result.map countLabel
             in
             case ( condNode, thenNode, elseNode ) of
-                ( Ok (TypedNode cm cond_), Ok (TypedNode tm then__), Ok (TypedNode em else__) ) ->
+                ( Ok ( _, TypedNode cm cond_ ), Ok ( _, TypedNode tm then__ ), Ok ( _, TypedNode em else__ ) ) ->
                     if cm.type_ == Bool && tm.type_ == em.type_ then
-                        Ok
-                            (TypedNode
-                                { range = range_, type_ = tm.type_, env = em.env |> countLabel }
-                                (TypedIfBlock (TypedNode cm cond_) (TypedNode tm then__) (TypedNode em else__))
-                            )
+                        lastEnv
+                            |> Result.map
+                                (\lastEnv_ ->
+                                    ( lastEnv_
+                                    , TypedNode { range = range_, type_ = tm.type_, env = lastEnv_ } (TypedIfBlock (TypedNode cm cond_) (TypedNode tm then__) (TypedNode em else__))
+                                    )
+                                )
 
                     else
                         Err
-                            [ DeadEnd row
-                                column
-                                (Problem "Type: If block condition must be a boolean and then and else must be of the same type")
-                            ]
+                            [ DeadEnd row column (Problem "Type: If block condition must be a boolean and then and else must be of the same type") ]
 
                 ( Err err, _, _ ) ->
                     Err err
@@ -205,99 +310,152 @@ fromNodeExpression env_ (Node range_ expr) =
                     Err err
 
         Integer int ->
-            Ok
-                (TypedNode { range = range_, type_ = Int, env = env_ |> countLabel }
-                    (TypedInteger int)
-                )
+            let
+                lastEnv : Env
+                lastEnv =
+                    env_ |> countLabel
+            in
+            Ok ( lastEnv, TypedNode { range = range_, type_ = Int, env = lastEnv } (TypedInteger int) )
 
         Negation node ->
             let
-                typedExpression : Result (List DeadEnd) (TypedNode TypedExpression)
+                typedExpression : Result (List DeadEnd) ( Env, TypedNode TypedExpression )
                 typedExpression =
                     fromNodeExpression env_ node
+
+                exprEnv : Result (List DeadEnd) Env
+                exprEnv =
+                    typedExpression |> Result.map (\( env__, _ ) -> env__)
+
+                lastEnv : Result (List DeadEnd) Env
+                lastEnv =
+                    exprEnv |> Result.map countLabel
             in
-            case typedExpression of
-                Ok (TypedNode nm node_) ->
+            case ( lastEnv, typedExpression ) of
+                ( Ok lastEnv_, Ok ( _, TypedNode nm node_ ) ) ->
                     if nm.type_ == Int then
                         Ok
-                            (TypedNode { range = range_, type_ = Int, env = nm.env |> countLabel }
-                                (TypedNegation (TypedNode nm node_))
+                            ( lastEnv_
+                            , TypedNode { range = range_, type_ = Int, env = lastEnv_ } (TypedNegation (TypedNode nm node_))
                             )
 
                     else
                         Err [ DeadEnd row column (Problem "Type: Negation must be applied to an integer") ]
 
-                Err node_ ->
-                    Err node_
+                ( Err err, _ ) ->
+                    Err err
+
+                ( _, Err err ) ->
+                    Err err
 
         ParenthesizedExpression node ->
             let
-                typedExpression : Result (List DeadEnd) (TypedNode TypedExpression)
+                typedExpression : Result (List DeadEnd) ( Env, TypedNode TypedExpression )
                 typedExpression =
                     fromNodeExpression env_ node
+
+                exprEnv : Result (List DeadEnd) Env
+                exprEnv =
+                    typedExpression |> Result.map (\( env__, _ ) -> env__)
+
+                lastEnv : Result (List DeadEnd) Env
+                lastEnv =
+                    exprEnv |> Result.map countLabel
             in
-            Result.map
-                (\node_ ->
-                    TypedNode { range = range_, type_ = type_ node_, env = node_ |> env |> countLabel }
-                        (TypedParenthesizedExpression node_)
-                )
-                typedExpression
+            case ( lastEnv, typedExpression ) of
+                ( Ok lastEnv_, Ok ( _, TypedNode nm node_ ) ) ->
+                    Ok
+                        ( lastEnv_
+                        , TypedNode { range = range_, type_ = nm.type_, env = lastEnv_ } (TypedParenthesizedExpression (TypedNode nm node_))
+                        )
+
+                ( Err err, _ ) ->
+                    Err err
+
+                ( _, Err err ) ->
+                    Err err
 
         LetExpression letblock ->
             let
-                typedLetBlock : Result (List DeadEnd) TypedLetBlock
+                typedLetBlock : Result (List DeadEnd) ( Env, TypedLetBlock )
                 typedLetBlock =
                     fromLetBlock env_ letblock
+
+                letBlockEnv : Result (List DeadEnd) Env
+                letBlockEnv =
+                    typedLetBlock |> Result.map (\( env__, _ ) -> env__)
+
+                lastEnv : Result (List DeadEnd) Env
+                lastEnv =
+                    letBlockEnv |> Result.map (countLabel >> resetRequiredVariables)
             in
-            case typedLetBlock of
-                Ok typedLetBlock_ ->
+            case ( lastEnv, typedLetBlock ) of
+                ( Ok lastEnv_, Ok ( _, typedLetBlock_ ) ) ->
                     Ok
-                        (TypedNode
-                            { range = range_
-                            , type_ = typedLetBlock_.expression |> type_
-                            , env = typedLetBlock_.expression |> env |> countLabel |> resetRequiredVariables
-                            }
+                        ( lastEnv_
+                        , TypedNode
+                            { range = range_, type_ = typedLetBlock_.expression |> type_, env = lastEnv_ }
                             (TypedLetExpression typedLetBlock_)
                         )
 
-                Err err ->
+                ( Err err, _ ) ->
+                    Err err
+
+                ( _, Err err ) ->
                     Err err
 
         _ ->
             Err [ DeadEnd row column (Problem "Type: Unsupported expression") ]
 
 
-fromFunction : Env -> Function -> Result (List DeadEnd) TypedFunction
+fromFunction : Env -> Function -> Result (List DeadEnd) ( Env, TypedFunction )
 fromFunction env_ func =
     let
-        typedFunction : Result (List DeadEnd) (TypedNode TypedFunctionImplementation)
+        typedFunction : Result (List DeadEnd) ( Env, TypedNode TypedFunctionImplementation )
         typedFunction =
             fromNodeFunctionImplementation env_ func.declaration
     in
-    Result.map (\d -> { declaration = d }) typedFunction
+    typedFunction
+        |> Result.map (\( lastEnv, decl ) -> ( lastEnv, { declaration = decl } ))
 
 
-fromNodeFunctionImplementation : Env -> Node FunctionImplementation -> Result (List DeadEnd) (TypedNode TypedFunctionImplementation)
+fromNodeFunctionImplementation : Env -> Node FunctionImplementation -> Result (List DeadEnd) ( Env, TypedNode TypedFunctionImplementation )
 fromNodeFunctionImplementation env_ (Node range_ node) =
     let
-        nameNode : Result (List DeadEnd) (TypedNode String)
+        nameNode : Result (List DeadEnd) ( Env, TypedNode String )
         nameNode =
             fromNodeString env_ node.name
 
-        exprNode : Result (List DeadEnd) (TypedNode TypedExpression)
+        nameEnv : Result (List DeadEnd) Env
+        nameEnv =
+            nameNode |> Result.map (\( env__, _ ) -> env__)
+
+        exprNode : Result (List DeadEnd) ( Env, TypedNode TypedExpression )
         exprNode =
-            nameNode |> Result.andThen (\(TypedNode nm _) -> fromNodeExpression nm.env node.expression)
+            nameEnv |> Result.andThen (\nameEnv_ -> fromNodeExpression nameEnv_ node.expression)
+
+        lastEnv : Result (List DeadEnd) Env
+        lastEnv =
+            exprNode |> Result.map (\( env__, _ ) -> env__ |> countLabel)
     in
-    Result.map2
-        (\name_ expr_ ->
-            TypedNode
-                { range = range_, type_ = type_ expr_, env = expr_ |> env |> countLabel }
+    Result.map3
+        (\( _, name_ ) env__ ( _, expr_ ) ->
+            ( env__
+            , TypedNode
+                { range = range_, type_ = type_ expr_, env = env__ }
                 (TypedFunctionImplementation name_ expr_)
+            )
         )
         nameNode
+        lastEnv
         exprNode
 
 
-fromNodeString : Env -> Node String -> Result (List DeadEnd) (TypedNode String)
+fromNodeString : Env -> Node String -> Result (List DeadEnd) ( Env, TypedNode String )
 fromNodeString env_ (Node range_ str) =
-    Ok (TypedNode { range = range_, type_ = Int, env = env_ |> countLabel } str)
+    let
+        lastEnv : Env
+        lastEnv =
+            env_ |> countLabel
+    in
+    Ok ( lastEnv, TypedNode { range = range_, type_ = Int, env = lastEnv } str )

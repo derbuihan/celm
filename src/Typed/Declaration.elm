@@ -13,7 +13,7 @@ type TypedDeclaration
     | TypedFunctionDeclaration TypedFunction
 
 
-fromNodeDeclaration : Env -> Node Declaration -> Result (List DeadEnd) (TypedNode TypedDeclaration)
+fromNodeDeclaration : Env -> Node Declaration -> Result (List DeadEnd) ( Env, TypedNode TypedDeclaration )
 fromNodeDeclaration env_ (Node range_ node) =
     let
         { row, column } =
@@ -22,28 +22,46 @@ fromNodeDeclaration env_ (Node range_ node) =
     case node of
         Destructuring pattern expr_ ->
             let
-                typedPattern : Result (List DeadEnd) (TypedNode TypedPattern)
+                typedPattern : Result (List DeadEnd) ( Env, TypedNode TypedPattern )
                 typedPattern =
                     fromNodePattern env_ pattern
 
-                typedExpression : Result (List DeadEnd) (TypedNode TypedExpression)
+                parttenEnv : Result (List DeadEnd) Env
+                parttenEnv =
+                    typedPattern |> Result.map (\( e, _ ) -> e |> countLabel)
+
+                typedExpression : Result (List DeadEnd) ( Env, TypedNode TypedExpression )
                 typedExpression =
-                    typedPattern
-                        |> Result.andThen (\p -> fromNodeExpression (p |> env) expr_)
+                    parttenEnv
+                        |> Result.andThen (\env__ -> fromNodeExpression env_ expr_)
+
+                exprEnv : Result (List DeadEnd) Env
+                exprEnv =
+                    typedExpression |> Result.map (\( e, _ ) -> e)
+
+                lastEnv : Result (List DeadEnd) Env
+                lastEnv =
+                    exprEnv |> Result.map (\e -> e |> countLabel)
             in
-            Result.map2
-                (\p e -> TypedNode { range = range_, type_ = type_ e, env = e |> env |> countLabel } (TypedDestructuring p e))
+            Result.map3
+                (\( _, ptrn ) env__ ( _, expr ) -> ( env__, TypedNode { range = range_, type_ = type_ expr, env = env__ } (TypedDestructuring ptrn expr) ))
                 typedPattern
+                lastEnv
                 typedExpression
 
         FunctionDeclaration func ->
             let
-                typedFunction : Result (List DeadEnd) TypedFunction
+                typedFunction : Result (List DeadEnd) ( Env, TypedFunction )
                 typedFunction =
                     fromFunction env_ func
+
+                lastEnv : Result (List DeadEnd) Env
+                lastEnv =
+                    typedFunction |> Result.map (\( e, _ ) -> e |> countLabel)
             in
-            Result.map
-                (\f -> TypedNode { range = range_, type_ = Unit, env = f.declaration |> env |> countLabel } (TypedFunctionDeclaration f))
+            Result.map2
+                (\e ( _, f ) -> ( e, TypedNode { range = range_, type_ = Unit, env = e } (TypedFunctionDeclaration f) ))
+                lastEnv
                 typedFunction
 
         _ ->

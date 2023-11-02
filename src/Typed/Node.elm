@@ -1,4 +1,4 @@
-module Typed.Node exposing (Env, Meta, Type(..), TypedNode(..), addRequiredVariable, countLabel, env, getLastEnv, inferNodes, initEnv, meta, range, resetRequiredVariables, type_, value)
+module Typed.Node exposing (Env, Meta, Type(..), TypedNode(..), addRequiredVariable, countLabel, env, getLastEnv, inferNodes, initEnv, insertOffset, meta, range, resetOffsets, resetRequiredVariables, type_, value)
 
 import Dict
 import Elm.Syntax.Node exposing (Node)
@@ -15,6 +15,7 @@ type Type
 type alias Env =
     { label : Int
     , required_variables : Dict.Dict String Type
+    , offsets : Dict.Dict String Int
     }
 
 
@@ -58,6 +59,7 @@ initEnv : Env
 initEnv =
     { label = 0
     , required_variables = Dict.empty
+    , offsets = Dict.fromList []
     }
 
 
@@ -76,8 +78,23 @@ resetRequiredVariables env_ =
     { env_ | required_variables = Dict.empty }
 
 
-inferNodes : (Env -> Node a -> Result (List DeadEnd) (TypedNode b)) -> Env -> List (Node a) -> Result (List DeadEnd) (List (TypedNode b))
-inferNodes fromNodeFunc env_ nodes =
+insertOffset : String -> Env -> Env
+insertOffset name env_ =
+    let
+        offset : Int
+        offset =
+            (1 + Dict.size env_.offsets) * 16
+    in
+    { env_ | offsets = Dict.insert name offset env_.offsets }
+
+
+resetOffsets : Env -> Env
+resetOffsets env_ =
+    { env_ | offsets = Dict.fromList [] }
+
+
+inferNodes : (Env -> Node a -> Result (List DeadEnd) (TypedNode b)) -> (Env -> Env) -> Env -> List (Node a) -> Result (List DeadEnd) (List (TypedNode b))
+inferNodes fromNodeFunc updateEnv env_ nodes =
     case nodes of
         [] ->
             Ok []
@@ -91,7 +108,7 @@ inferNodes fromNodeFunc env_ nodes =
             case typedNode of
                 Ok typedNode_ ->
                     Result.map (\typedNodes_ -> typedNode_ :: typedNodes_)
-                        (inferNodes fromNodeFunc (typedNode_ |> env |> resetRequiredVariables) nodes_)
+                        (inferNodes fromNodeFunc updateEnv (typedNode_ |> env |> updateEnv) nodes_)
 
                 Err deadEnds ->
                     Err deadEnds

@@ -272,16 +272,33 @@ module Main exposing (main)
 main = if False then 11 else 22
 EOF
 
-test 41 <<EOF
+# test 41 <<EOF
+# module Main exposing (main)
+# main = let
+#     e = d * 3 + a
+#     b = a + 22
+#     a = 11
+#     d = c / 2 
+#     c = b - 13
+# in
+#     e
+# EOF
+
+test 220 <<EOF
 module Main exposing (main)
 main = let
-    e = d * 3 + a
-    b = a + 22
-    a = 11
-    d = c / 2 
-    c = b - 13
+    var1 = 1
+    var2 = var1 + 2
+    var3 = var2 + 3
+    var4 = var3 + 4
+    var5 = var4 + 5
+    var6 = var5 + 6
+    var7 = var6 + 7
+    var8 = var7 + 8
+    var9 = var8 + 9
+    var10 = var9 + 10
 in
-    e
+    var1 + var2 + var3 + var4 + var5 + var6 + var7 + var8 + var9 + var10
 EOF
 
 

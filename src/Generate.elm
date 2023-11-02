@@ -8,7 +8,7 @@ import Result.Extra as Result
 import Typed.Declaration exposing (TypedDeclaration(..))
 import Typed.Expression exposing (TypedExpression(..), TypedFunctionImplementation, TypedLetDeclaration(..))
 import Typed.File exposing (TypedFile)
-import Typed.Node exposing (TypedNode(..), env, meta, value)
+import Typed.Node exposing (Meta, TypedNode(..), env, meta, value)
 
 
 push : String
@@ -22,40 +22,46 @@ pop reg =
 
 
 genNodeLetDeclaration : TypedNode TypedLetDeclaration -> Result (List DeadEnd) String
-genNodeLetDeclaration (TypedNode _ decl) =
+genNodeLetDeclaration (TypedNode meta_ decl) =
+    let
+        { row, column } =
+            meta_.range.start
+    in
     case decl of
         TypedLetFunction func ->
             let
                 genNodeFuncImpl : TypedNode TypedFunctionImplementation -> Result (List DeadEnd) String
                 genNodeFuncImpl (TypedNode _ funcImpl) =
                     let
-                        name : Char
+                        name : String
                         name =
-                            funcImpl.name |> value |> String.uncons |> Maybe.map Tuple.first |> Maybe.withDefault 'x'
+                            func.declaration |> value |> .name |> value
 
-                        offset : Int
+                        offset : Result (List DeadEnd) Int
                         offset =
-                            (Char.toCode name - 97 + 1) * 16
+                            Dict.get name meta_.env.offsets
+                                |> Result.fromMaybe [ DeadEnd row column (Problem "Gen: Unknown variable") ]
 
-                        expr : TypedNode TypedExpression
-                        expr =
+                        expression : TypedNode TypedExpression
+                        expression =
                             funcImpl.expression
 
                         codeExpr : Result (List DeadEnd) String
                         codeExpr =
-                            genNodeExpression expr
+                            genNodeExpression expression
                     in
-                    Result.map
-                        (\expr_ ->
-                            [ "    sub x0, x29, " ++ (offset |> String.fromInt)
+                    Result.map2
+                        (\expr offset_ ->
+                            [ "    sub x0, x29, " ++ (offset_ |> String.fromInt)
                             , "    str x0, [sp, -16]!"
-                            , expr_
+                            , expr
                             , "    ldr x1, [sp], 16"
                             , "    str x0, [x1]"
                             ]
                                 |> String.join "\n"
                         )
                         codeExpr
+                        offset
 
                 code : Result (List DeadEnd) String
                 code =
@@ -152,19 +158,19 @@ genNodeExpression (TypedNode meta_ expr) =
 
             else
                 let
-                    name_ : Char
-                    name_ =
-                        name |> String.uncons |> Maybe.map Tuple.first |> Maybe.withDefault 'x'
-
-                    offset : Int
+                    offset : Result (List DeadEnd) Int
                     offset =
-                        (Char.toCode name_ - 97 + 1) * 16
+                        Dict.get name meta_.env.offsets
+                            |> Result.fromMaybe [ DeadEnd row column (Problem "Gen2: Unknown variable") ]
                 in
-                [ "    sub x0, x29, " ++ (offset |> String.fromInt)
-                , "    ldr x0, [x0]"
-                ]
-                    |> String.join "\n"
-                    |> Ok
+                Result.map
+                    (\offset_ ->
+                        [ "    sub x0, x29, " ++ (offset_ |> String.fromInt)
+                        , "    ldr x0, [x0]"
+                        ]
+                            |> String.join "\n"
+                    )
+                    offset
 
         TypedIfBlock cond then_ else_ ->
             let
@@ -218,8 +224,18 @@ genNodeExpression (TypedNode meta_ expr) =
 
         TypedLetExpression letblock ->
             let
+                { declarations, expression } =
+                    letblock
+
+                stack_size : Int
+                stack_size =
+                    (declarations
+                        |> List.length
+                    )
+                        * 16
+
                 variables =
-                    letblock.declarations
+                    declarations
                         |> List.map value
                         |> List.map (\(TypedLetFunction func) -> func.declaration)
                         |> List.map value
@@ -227,7 +243,7 @@ genNodeExpression (TypedNode meta_ expr) =
                         |> List.map value
 
                 dependences =
-                    letblock.declarations
+                    declarations
                         |> List.map value
                         |> List.map (\(TypedLetFunction func) -> func.declaration)
                         |> List.indexedMap
@@ -244,14 +260,11 @@ genNodeExpression (TypedNode meta_ expr) =
 
                 graph : Graph (TypedNode TypedLetDeclaration) ()
                 graph =
-                    fromNodeLabelsAndEdgePairs
-                        letblock.declarations
-                        dependences
+                    fromNodeLabelsAndEdgePairs declarations dependences
 
                 acyclicGraph : Result (List DeadEnd) (AcyclicGraph (TypedNode TypedLetDeclaration) ())
                 acyclicGraph =
-                    checkAcyclic graph
-                        |> Result.mapError (\_ -> [ DeadEnd row column (Problem "Gen: Cyclic dependency") ])
+                    checkAcyclic graph |> Result.mapError (\_ -> [ DeadEnd row column (Problem "Gen: Cyclic dependency") ])
 
                 sortedDeclaration : Result (List DeadEnd) (List (TypedNode TypedLetDeclaration))
                 sortedDeclaration =
@@ -259,22 +272,23 @@ genNodeExpression (TypedNode meta_ expr) =
                         |> Result.map topologicalSort
                         |> Result.map (\nodes -> nodes |> List.map .node |> List.map .label)
 
-                declarations : Result (List DeadEnd) (List String)
-                declarations =
+                declarationsCode : Result (List DeadEnd) (List String)
+                declarationsCode =
                     sortedDeclaration |> Result.andThen (Result.combineMap genNodeLetDeclaration)
 
-                expression : Result (List DeadEnd) String
-                expression =
-                    genNodeExpression letblock.expression
+                expressionCode : Result (List DeadEnd) String
+                expressionCode =
+                    genNodeExpression expression
             in
             Result.map2
                 (\decls expr_ ->
-                    decls
+                    ("    sub sp, sp, " ++ (stack_size |> String.fromInt))
+                        :: decls
                         ++ [ expr_ ]
                         |> String.join "\n"
                 )
-                declarations
-                expression
+                declarationsCode
+                expressionCode
 
         _ ->
             Err
@@ -291,8 +305,12 @@ genNodeFunctionImplementation (TypedNode _ func) =
         expression : TypedNode TypedExpression
         expression =
             func.expression
+
+        exprCode : Result (List DeadEnd) String
+        exprCode =
+            genNodeExpression expression
     in
-    genNodeExpression expression
+    exprCode
         |> Result.map
             (\expr ->
                 [ "    .text"
@@ -301,7 +319,6 @@ genNodeFunctionImplementation (TypedNode _ func) =
                 , "_" ++ name ++ ":"
                 , "    stp x29, x30, [sp, -16]!"
                 , "    mov x29, sp"
-                , "    sub sp, sp, 416"
                 , expr
                 , "    mov sp, x29"
                 , "    ldp x29, x30, [sp], 16"
