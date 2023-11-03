@@ -8,7 +8,7 @@ import Graph exposing (AcyclicGraph, Graph, checkAcyclic, fromNodeLabelsAndEdgeP
 import List.Extra as List exposing (elemIndex)
 import Parser exposing (DeadEnd, Problem(..))
 import Typed.ModuleName exposing (TypedModuleName)
-import Typed.Node exposing (Env, Type(..), TypedNode(..), addRequiredVariable, countLabel, insertOffset, resetRequiredVariables, type_, value)
+import Typed.Node exposing (Meta, Type(..), TypedNode(..), VarInfo, addRequiredVariable, insertVariable, resetRequiredVariables, value)
 
 
 type TypedExpression
@@ -43,8 +43,8 @@ type alias TypedFunctionImplementation =
     }
 
 
-inferLetDeclarations : Env -> List (Node LetDeclaration) -> Result (List DeadEnd) (List ( Env, TypedNode TypedLetDeclaration ))
-inferLetDeclarations env_ decls =
+inferLetDeclarations : Meta -> List (Node LetDeclaration) -> Result (List DeadEnd) (List ( Meta, TypedNode TypedLetDeclaration ))
+inferLetDeclarations meta_ decls =
     case decls of
         [] ->
             Ok []
@@ -62,17 +62,17 @@ inferLetDeclarations env_ decls =
                         (Node _ variable_name) =
                             name
 
-                        typedDecl : Result (List DeadEnd) ( Env, TypedNode TypedLetDeclaration )
+                        typedDecl : Result (List DeadEnd) ( Meta, TypedNode TypedLetDeclaration )
                         typedDecl =
-                            fromNodeLetDeclaration (env_ |> insertOffset variable_name |> resetRequiredVariables) decl
+                            fromNodeLetDeclaration (meta_ |> insertVariable variable_name |> resetRequiredVariables) decl
 
-                        lastEnv : Result (List DeadEnd) Env
-                        lastEnv =
+                        lastMeta : Result (List DeadEnd) Meta
+                        lastMeta =
                             typedDecl |> Result.map Tuple.first
                     in
-                    case ( lastEnv, typedDecl ) of
-                        ( Ok lastEnv_, Ok ( _, decl_ ) ) ->
-                            Result.map (\typedDecls_ -> ( lastEnv_, decl_ ) :: typedDecls_) (inferLetDeclarations lastEnv_ decls_)
+                    case ( lastMeta, typedDecl ) of
+                        ( Ok lastMeta_, Ok ( _, decl_ ) ) ->
+                            Result.map (\typedDecls_ -> ( lastMeta_, decl_ ) :: typedDecls_) (inferLetDeclarations lastMeta_ decls_)
 
                         ( Err err, _ ) ->
                             Err err
@@ -84,8 +84,8 @@ inferLetDeclarations env_ decls =
                     Err [ DeadEnd 0 0 (Problem "Type: Destructuring is not supported") ]
 
 
-sortLetDeclarations : ( List Env, List (TypedNode TypedLetDeclaration) ) -> Result (List DeadEnd) (List (TypedNode TypedLetDeclaration))
-sortLetDeclarations ( envs, declarations ) =
+sortLetDeclarations : ( List Meta, List (TypedNode TypedLetDeclaration) ) -> Result (List DeadEnd) (List (TypedNode TypedLetDeclaration))
+sortLetDeclarations ( metas, declarations ) =
     let
         variables : List String
         variables =
@@ -93,8 +93,8 @@ sortLetDeclarations ( envs, declarations ) =
 
         dependences : List ( Int, Int )
         dependences =
-            envs
-                |> List.indexedMap (\i env_ -> env_ |> .required_variables |> keys |> List.map (\name -> elemIndex name variables |> Maybe.map (\j -> ( j, i ))))
+            metas
+                |> List.indexedMap (\i meta_ -> meta_ |> .required_variables |> keys |> List.map (\name -> elemIndex name variables |> Maybe.map (\j -> ( j, i ))))
                 |> List.concat
                 |> List.filterMap identity
 
@@ -113,40 +113,40 @@ sortLetDeclarations ( envs, declarations ) =
     sortedDeclaration
 
 
-fromLetBlock : Env -> LetBlock -> Result (List DeadEnd) ( Env, TypedLetBlock )
-fromLetBlock env_ letBlock =
+fromLetBlock : Meta -> LetBlock -> Result (List DeadEnd) ( Meta, TypedLetBlock )
+fromLetBlock meta_ letBlock =
     let
-        declarationsWithEnv : Result (List DeadEnd) ( List Env, List (TypedNode TypedLetDeclaration) )
-        declarationsWithEnv =
-            inferLetDeclarations env_ letBlock.declarations |> Result.map List.unzip
+        declarationsWithMeta : Result (List DeadEnd) ( List Meta, List (TypedNode TypedLetDeclaration) )
+        declarationsWithMeta =
+            inferLetDeclarations meta_ letBlock.declarations |> Result.map List.unzip
 
-        declsLastEnv : Result (List DeadEnd) Env
-        declsLastEnv =
-            declarationsWithEnv |> Result.map (Tuple.first >> List.last >> Maybe.withDefault env_)
+        declslastMeta : Result (List DeadEnd) Meta
+        declslastMeta =
+            declarationsWithMeta |> Result.map (Tuple.first >> List.last >> Maybe.withDefault meta_)
 
         sortedDeclarations : Result (List DeadEnd) (List (TypedNode TypedLetDeclaration))
         sortedDeclarations =
-            declarationsWithEnv |> Result.andThen sortLetDeclarations
+            declarationsWithMeta |> Result.andThen sortLetDeclarations
 
-        offsets : Result (List DeadEnd) (Dict.Dict String Int)
-        offsets =
-            declsLastEnv |> Result.map .offsets
+        variables : Result (List DeadEnd) (Dict.Dict String VarInfo)
+        variables =
+            declslastMeta |> Result.map .variables
 
-        declsEnv : Result (List DeadEnd) Env
-        declsEnv =
-            Result.map2 (\env__ offsets_ -> { env__ | offsets = offsets_ }) declsLastEnv offsets
+        declsMeta : Result (List DeadEnd) Meta
+        declsMeta =
+            Result.map2 (\meta__ variables_ -> { meta__ | variables = variables_ } |> resetRequiredVariables) declslastMeta variables
 
-        expression : Result (List DeadEnd) ( Env, TypedNode TypedExpression )
+        expression : Result (List DeadEnd) ( Meta, TypedNode TypedExpression )
         expression =
-            declsEnv |> Result.andThen (\env__ -> fromNodeExpression env__ letBlock.expression)
+            declsMeta |> Result.andThen (\meta__ -> fromNodeExpression meta__ letBlock.expression)
 
-        lastEnv : Result (List DeadEnd) Env
-        lastEnv =
+        lastMeta : Result (List DeadEnd) Meta
+        lastMeta =
             expression |> Result.map Tuple.first
     in
-    case ( lastEnv, sortedDeclarations, expression ) of
-        ( Ok lastEnv_, Ok decls_, Ok ( _, expr_ ) ) ->
-            Ok ( lastEnv_, { declarations = decls_, expression = expr_ } )
+    case ( lastMeta, sortedDeclarations, expression ) of
+        ( Ok lastMeta_, Ok decls_, Ok ( _, expr_ ) ) ->
+            Ok ( lastMeta_, { declarations = decls_, expression = expr_ } )
 
         ( Err err, _, _ ) ->
             Err err
@@ -158,8 +158,8 @@ fromLetBlock env_ letBlock =
             Err err
 
 
-fromNodeLetDeclaration : Env -> Node LetDeclaration -> Result (List DeadEnd) ( Env, TypedNode TypedLetDeclaration )
-fromNodeLetDeclaration env_ (Node range_ letdecl) =
+fromNodeLetDeclaration : Meta -> Node LetDeclaration -> Result (List DeadEnd) ( Meta, TypedNode TypedLetDeclaration )
+fromNodeLetDeclaration meta_ (Node range_ letdecl) =
     let
         { row, column } =
             range_.start
@@ -167,25 +167,23 @@ fromNodeLetDeclaration env_ (Node range_ letdecl) =
     case letdecl of
         LetFunction func ->
             let
-                typedFunction : Result (List DeadEnd) ( Env, TypedFunction )
+                typedFunction : Result (List DeadEnd) ( Meta, TypedFunction )
                 typedFunction =
-                    fromFunction env_ func
+                    fromFunction meta_ func
 
-                funcEnv : Result (List DeadEnd) Env
-                funcEnv =
+                funcMeta : Result (List DeadEnd) Meta
+                funcMeta =
                     typedFunction |> Result.map Tuple.first
 
-                lastEnv : Result (List DeadEnd) Env
-                lastEnv =
-                    funcEnv |> Result.map countLabel
+                lastMeta : Result (List DeadEnd) Meta
+                lastMeta =
+                    funcMeta |> Result.map (\meta__ -> { meta__ | label = meta__.label + 1, range = range_ })
             in
-            case ( lastEnv, typedFunction ) of
-                ( Ok lastEnv_, Ok ( _, func_ ) ) ->
+            case ( lastMeta, typedFunction ) of
+                ( Ok lastMeta_, Ok ( _, func_ ) ) ->
                     Ok
-                        ( lastEnv_
-                        , TypedNode
-                            { range = range_, type_ = func_.declaration |> type_, env = lastEnv_ }
-                            (TypedLetFunction func_)
+                        ( lastMeta_
+                        , TypedNode lastMeta_ (TypedLetFunction func_)
                         )
 
                 ( Err err, _ ) ->
@@ -198,8 +196,8 @@ fromNodeLetDeclaration env_ (Node range_ letdecl) =
             Err [ DeadEnd row column (Problem "Type: Unsupported let declaration") ]
 
 
-fromNodeExpression : Env -> Node Expression -> Result (List DeadEnd) ( Env, TypedNode TypedExpression )
-fromNodeExpression env_ (Node range_ expr) =
+fromNodeExpression : Meta -> Node Expression -> Result (List DeadEnd) ( Meta, TypedNode TypedExpression )
+fromNodeExpression meta_ (Node range_ expr) =
     let
         { row, column } =
             range_.start
@@ -207,49 +205,49 @@ fromNodeExpression env_ (Node range_ expr) =
     case expr of
         UnitExpr ->
             let
-                lastEnv =
-                    env_ |> countLabel
+                lastMeta =
+                    { meta_ | label = meta_.label + 1, range = range_, type_ = Unit }
             in
-            Ok ( lastEnv, TypedNode { range = range_, type_ = Unit, env = lastEnv } TypedUnitExpr )
+            Ok ( lastMeta, TypedNode lastMeta TypedUnitExpr )
 
         OperatorApplication op dir left right ->
             let
-                leftNode : Result (List DeadEnd) ( Env, TypedNode TypedExpression )
+                leftNode : Result (List DeadEnd) ( Meta, TypedNode TypedExpression )
                 leftNode =
-                    fromNodeExpression env_ left
+                    fromNodeExpression meta_ left
 
-                leftEnv : Result (List DeadEnd) Env
-                leftEnv =
-                    leftNode |> Result.map (\( env__, _ ) -> env__)
+                leftMeta : Result (List DeadEnd) Meta
+                leftMeta =
+                    leftNode |> Result.map Tuple.first
 
-                rightNode : Result (List DeadEnd) ( Env, TypedNode TypedExpression )
+                rightNode : Result (List DeadEnd) ( Meta, TypedNode TypedExpression )
                 rightNode =
-                    leftEnv
-                        |> Result.andThen (\env__ -> fromNodeExpression env__ right)
+                    leftMeta
+                        |> Result.andThen (\meta__ -> fromNodeExpression meta__ right)
 
-                rightEnv : Result (List DeadEnd) Env
-                rightEnv =
-                    rightNode |> Result.map (\( env__, _ ) -> env__)
+                rightMeta : Result (List DeadEnd) Meta
+                rightMeta =
+                    rightNode |> Result.map Tuple.first
 
-                lastEnv : Result (List DeadEnd) Env
-                lastEnv =
-                    rightEnv |> Result.map countLabel
+                lastMeta : Result (List DeadEnd) Meta
+                lastMeta =
+                    rightMeta |> Result.map (\meta__ -> { meta__ | label = meta__.label + 1, range = range_ })
             in
-            case ( lastEnv, leftNode, rightNode ) of
-                ( Ok lastEnv_, Ok ( _, TypedNode lm lhs ), Ok ( _, TypedNode rm rhs ) ) ->
+            case ( lastMeta, leftNode, rightNode ) of
+                ( Ok lastMeta_, Ok ( _, TypedNode lm lhs ), Ok ( _, TypedNode rm rhs ) ) ->
                     case ( lm.type_, rm.type_ ) of
                         ( Int, Int ) ->
                             if List.member op [ "+", "-", "*", "/" ] then
                                 Ok
-                                    ( lastEnv_
-                                    , TypedNode { range = range_, type_ = Int, env = lastEnv_ }
+                                    ( lastMeta_
+                                    , TypedNode { lastMeta_ | type_ = Int }
                                         (TypedOperatorApplication op dir (TypedNode lm lhs) (TypedNode rm rhs))
                                     )
 
                             else if List.member op [ "==", "/=", "<", ">", "<=", ">=" ] then
                                 Ok
-                                    ( lastEnv_
-                                    , TypedNode { range = range_, type_ = Bool, env = lastEnv_ }
+                                    ( lastMeta_
+                                    , TypedNode { lastMeta_ | type_ = Bool }
                                         (TypedOperatorApplication op dir (TypedNode lm lhs) (TypedNode rm rhs))
                                     )
 
@@ -257,10 +255,10 @@ fromNodeExpression env_ (Node range_ expr) =
                                 Err [ DeadEnd row column (Problem "Type: Unsupported operator application") ]
 
                         ( Bool, Bool ) ->
-                            if List.member op [ "==", "/=", "<", ">", "<=", ">=" ] then
+                            if List.member op [ "==", "/=" ] then
                                 Ok
-                                    ( lastEnv_
-                                    , TypedNode { range = range_, type_ = Bool, env = lastEnv_ }
+                                    ( lastMeta_
+                                    , TypedNode { lastMeta_ | type_ = Bool }
                                         (TypedOperatorApplication op dir (TypedNode lm lhs) (TypedNode rm rhs))
                                     )
 
@@ -282,63 +280,58 @@ fromNodeExpression env_ (Node range_ expr) =
         FunctionOrValue moduleName name ->
             if name == "True" || name == "False" then
                 let
-                    lastEnv : Env
-                    lastEnv =
-                        env_ |> countLabel
+                    lastMeta : Meta
+                    lastMeta =
+                        { meta_ | label = meta_.label + 1, range = range_, type_ = Bool }
                 in
-                Ok ( lastEnv, TypedNode { range = range_, type_ = Bool, env = lastEnv } (TypedFunctionOrValue moduleName name) )
+                Ok ( lastMeta, TypedNode lastMeta (TypedFunctionOrValue moduleName name) )
 
             else
                 let
-                    lastEnv : Env
-                    lastEnv =
-                        env_ |> countLabel |> addRequiredVariable name Int
+                    lastMeta : Meta
+                    lastMeta =
+                        { meta_ | label = meta_.label + 1, range = range_ } |> addRequiredVariable name
                 in
-                Ok
-                    ( lastEnv
-                    , TypedNode
-                        { range = range_, type_ = Int, env = lastEnv }
-                        (TypedFunctionOrValue moduleName name)
-                    )
+                Ok ( lastMeta, TypedNode lastMeta (TypedFunctionOrValue moduleName name) )
 
         IfBlock cond then_ else_ ->
             let
-                condNode : Result (List DeadEnd) ( Env, TypedNode TypedExpression )
+                condNode : Result (List DeadEnd) ( Meta, TypedNode TypedExpression )
                 condNode =
-                    fromNodeExpression env_ cond
+                    fromNodeExpression meta_ cond
 
-                condEnv : Result (List DeadEnd) Env
-                condEnv =
-                    condNode |> Result.map (\( env__, _ ) -> env__)
+                condMeta : Result (List DeadEnd) Meta
+                condMeta =
+                    condNode |> Result.map Tuple.first
 
-                thenNode : Result (List DeadEnd) ( Env, TypedNode TypedExpression )
+                thenNode : Result (List DeadEnd) ( Meta, TypedNode TypedExpression )
                 thenNode =
-                    condEnv |> Result.andThen (\env__ -> fromNodeExpression env__ then_)
+                    condMeta |> Result.andThen (\meta__ -> fromNodeExpression meta__ then_)
 
-                thenEnv : Result (List DeadEnd) Env
-                thenEnv =
-                    thenNode |> Result.map (\( env__, _ ) -> env__)
+                thenMeta : Result (List DeadEnd) Meta
+                thenMeta =
+                    thenNode |> Result.map Tuple.first
 
-                elseNode : Result (List DeadEnd) ( Env, TypedNode TypedExpression )
+                elseNode : Result (List DeadEnd) ( Meta, TypedNode TypedExpression )
                 elseNode =
-                    thenEnv |> Result.andThen (\env__ -> fromNodeExpression env__ else_)
+                    thenMeta |> Result.andThen (\meta__ -> fromNodeExpression meta__ else_)
 
-                elseEnv : Result (List DeadEnd) Env
-                elseEnv =
-                    elseNode |> Result.map (\( env__, _ ) -> env__)
+                elseMeta : Result (List DeadEnd) Meta
+                elseMeta =
+                    elseNode |> Result.map Tuple.first
 
-                lastEnv : Result (List DeadEnd) Env
-                lastEnv =
-                    elseEnv |> Result.map countLabel
+                lastMeta : Result (List DeadEnd) Meta
+                lastMeta =
+                    elseMeta |> Result.map (\meta__ -> { meta__ | label = meta__.label + 1, range = range_ })
             in
             case ( condNode, thenNode, elseNode ) of
                 ( Ok ( _, TypedNode cm cond_ ), Ok ( _, TypedNode tm then__ ), Ok ( _, TypedNode em else__ ) ) ->
                     if cm.type_ == Bool && tm.type_ == em.type_ then
-                        lastEnv
+                        lastMeta
                             |> Result.map
-                                (\lastEnv_ ->
-                                    ( lastEnv_
-                                    , TypedNode { range = range_, type_ = tm.type_, env = lastEnv_ } (TypedIfBlock (TypedNode cm cond_) (TypedNode tm then__) (TypedNode em else__))
+                                (\lastMeta_ ->
+                                    ( lastMeta_
+                                    , TypedNode { lastMeta_ | type_ = tm.type_ } (TypedIfBlock (TypedNode cm cond_) (TypedNode tm then__) (TypedNode em else__))
                                     )
                                 )
 
@@ -357,33 +350,31 @@ fromNodeExpression env_ (Node range_ expr) =
 
         Integer int ->
             let
-                lastEnv : Env
-                lastEnv =
-                    env_ |> countLabel
+                lastMeta : Meta
+                lastMeta =
+                    { meta_ | range = range_, type_ = Int, label = meta_.label + 1 }
             in
-            Ok ( lastEnv, TypedNode { range = range_, type_ = Int, env = lastEnv } (TypedInteger int) )
+            Ok ( lastMeta, TypedNode lastMeta (TypedInteger int) )
 
         Negation node ->
             let
-                typedExpression : Result (List DeadEnd) ( Env, TypedNode TypedExpression )
+                typedExpression : Result (List DeadEnd) ( Meta, TypedNode TypedExpression )
                 typedExpression =
-                    fromNodeExpression env_ node
+                    fromNodeExpression meta_ node
 
-                exprEnv : Result (List DeadEnd) Env
-                exprEnv =
-                    typedExpression |> Result.map (\( env__, _ ) -> env__)
+                exprMeta : Result (List DeadEnd) Meta
+                exprMeta =
+                    typedExpression |> Result.map (\( meta__, _ ) -> meta__)
 
-                lastEnv : Result (List DeadEnd) Env
-                lastEnv =
-                    exprEnv |> Result.map countLabel
+                lastMeta : Result (List DeadEnd) Meta
+                lastMeta =
+                    exprMeta |> Result.map (\meta__ -> { meta__ | label = meta__.label + 1, range = range_, type_ = Int })
             in
-            case ( lastEnv, typedExpression ) of
-                ( Ok lastEnv_, Ok ( _, TypedNode nm node_ ) ) ->
+            case ( lastMeta, typedExpression ) of
+                ( Ok lastMeta_, Ok ( _, TypedNode nm node_ ) ) ->
                     if nm.type_ == Int then
                         Ok
-                            ( lastEnv_
-                            , TypedNode { range = range_, type_ = Int, env = lastEnv_ } (TypedNegation (TypedNode nm node_))
-                            )
+                            ( lastMeta_, TypedNode lastMeta_ (TypedNegation (TypedNode nm node_)) )
 
                     else
                         Err [ DeadEnd row column (Problem "Type: Negation must be applied to an integer") ]
@@ -396,23 +387,23 @@ fromNodeExpression env_ (Node range_ expr) =
 
         ParenthesizedExpression node ->
             let
-                typedExpression : Result (List DeadEnd) ( Env, TypedNode TypedExpression )
+                typedExpression : Result (List DeadEnd) ( Meta, TypedNode TypedExpression )
                 typedExpression =
-                    fromNodeExpression env_ node
+                    fromNodeExpression meta_ node
 
-                exprEnv : Result (List DeadEnd) Env
-                exprEnv =
-                    typedExpression |> Result.map (\( env__, _ ) -> env__)
+                exprMeta : Result (List DeadEnd) Meta
+                exprMeta =
+                    typedExpression |> Result.map Tuple.first
 
-                lastEnv : Result (List DeadEnd) Env
-                lastEnv =
-                    exprEnv |> Result.map countLabel
+                lastMeta : Result (List DeadEnd) Meta
+                lastMeta =
+                    exprMeta |> Result.map (\meta__ -> { meta__ | label = meta__.label + 1, range = range_ })
             in
-            case ( lastEnv, typedExpression ) of
-                ( Ok lastEnv_, Ok ( _, TypedNode nm node_ ) ) ->
+            case ( lastMeta, typedExpression ) of
+                ( Ok lastMeta_, Ok ( _, TypedNode nm node_ ) ) ->
                     Ok
-                        ( lastEnv_
-                        , TypedNode { range = range_, type_ = nm.type_, env = lastEnv_ } (TypedParenthesizedExpression (TypedNode nm node_))
+                        ( lastMeta_
+                        , TypedNode lastMeta_ (TypedParenthesizedExpression (TypedNode nm node_))
                         )
 
                 ( Err err, _ ) ->
@@ -423,26 +414,22 @@ fromNodeExpression env_ (Node range_ expr) =
 
         LetExpression letblock ->
             let
-                typedLetBlock : Result (List DeadEnd) ( Env, TypedLetBlock )
+                typedLetBlock : Result (List DeadEnd) ( Meta, TypedLetBlock )
                 typedLetBlock =
-                    fromLetBlock env_ letblock
+                    fromLetBlock meta_ letblock
 
-                letBlockEnv : Result (List DeadEnd) Env
-                letBlockEnv =
-                    typedLetBlock |> Result.map (\( env__, _ ) -> env__)
+                letBlockMeta : Result (List DeadEnd) Meta
+                letBlockMeta =
+                    typedLetBlock |> Result.map (\( meta__, _ ) -> meta__)
 
-                lastEnv : Result (List DeadEnd) Env
-                lastEnv =
-                    letBlockEnv |> Result.map (countLabel >> resetRequiredVariables)
+                lastMeta : Result (List DeadEnd) Meta
+                lastMeta =
+                    letBlockMeta |> Result.map (\meta__ -> { meta__ | label = meta__.label + 1, range = range_ } |> resetRequiredVariables)
             in
-            case ( lastEnv, typedLetBlock ) of
-                ( Ok lastEnv_, Ok ( _, typedLetBlock_ ) ) ->
+            case ( lastMeta, typedLetBlock ) of
+                ( Ok lastMeta_, Ok ( _, typedLetBlock_ ) ) ->
                     Ok
-                        ( lastEnv_
-                        , TypedNode
-                            { range = range_, type_ = typedLetBlock_.expression |> type_, env = lastEnv_ }
-                            (TypedLetExpression typedLetBlock_)
-                        )
+                        ( lastMeta_, TypedNode lastMeta_ (TypedLetExpression typedLetBlock_) )
 
                 ( Err err, _ ) ->
                     Err err
@@ -454,54 +441,54 @@ fromNodeExpression env_ (Node range_ expr) =
             Err [ DeadEnd row column (Problem "Type: Unsupported expression") ]
 
 
-fromFunction : Env -> Function -> Result (List DeadEnd) ( Env, TypedFunction )
-fromFunction env_ func =
+fromFunction : Meta -> Function -> Result (List DeadEnd) ( Meta, TypedFunction )
+fromFunction meta_ func =
     let
-        typedFunction : Result (List DeadEnd) ( Env, TypedNode TypedFunctionImplementation )
+        typedFunction : Result (List DeadEnd) ( Meta, TypedNode TypedFunctionImplementation )
         typedFunction =
-            fromNodeFunctionImplementation env_ func.declaration
+            fromNodeFunctionImplementation meta_ func.declaration
     in
     typedFunction
-        |> Result.map (\( lastEnv, decl ) -> ( lastEnv, { declaration = decl } ))
+        |> Result.map (\( lastMeta, decl ) -> ( lastMeta, { declaration = decl } ))
 
 
-fromNodeFunctionImplementation : Env -> Node FunctionImplementation -> Result (List DeadEnd) ( Env, TypedNode TypedFunctionImplementation )
-fromNodeFunctionImplementation env_ (Node range_ node) =
+fromNodeFunctionImplementation : Meta -> Node FunctionImplementation -> Result (List DeadEnd) ( Meta, TypedNode TypedFunctionImplementation )
+fromNodeFunctionImplementation meta_ (Node range_ node) =
     let
-        nameNode : Result (List DeadEnd) ( Env, TypedNode String )
-        nameNode =
-            fromNodeString env_ node.name
-
-        nameEnv : Result (List DeadEnd) Env
-        nameEnv =
-            nameNode |> Result.map (\( env__, _ ) -> env__)
-
-        exprNode : Result (List DeadEnd) ( Env, TypedNode TypedExpression )
+        exprNode : Result (List DeadEnd) ( Meta, TypedNode TypedExpression )
         exprNode =
-            nameEnv |> Result.andThen (\nameEnv_ -> fromNodeExpression nameEnv_ node.expression)
+            fromNodeExpression meta_ node.expression
 
-        lastEnv : Result (List DeadEnd) Env
-        lastEnv =
-            exprNode |> Result.map (\( env__, _ ) -> env__ |> countLabel)
+        exprMeta : Result (List DeadEnd) Meta
+        exprMeta =
+            exprNode |> Result.map Tuple.first
+
+        nameNode : Result (List DeadEnd) ( Meta, TypedNode String )
+        nameNode =
+            exprMeta |> Result.andThen (\meta__ -> fromNodeString meta__ node.name)
+
+        nameMeta : Result (List DeadEnd) Meta
+        nameMeta =
+            nameNode |> Result.map Tuple.first
+
+        lastMeta : Result (List DeadEnd) Meta
+        lastMeta =
+            nameMeta |> Result.map (\meta__ -> { meta__ | label = meta__.label + 1, range = range_ })
     in
     Result.map3
-        (\( _, name_ ) env__ ( _, expr_ ) ->
-            ( env__
-            , TypedNode
-                { range = range_, type_ = type_ expr_, env = env__ }
-                (TypedFunctionImplementation name_ expr_)
-            )
+        (\( _, name_ ) meta__ ( _, expr_ ) ->
+            ( meta__, TypedNode meta__ (TypedFunctionImplementation name_ expr_) )
         )
         nameNode
-        lastEnv
+        lastMeta
         exprNode
 
 
-fromNodeString : Env -> Node String -> Result (List DeadEnd) ( Env, TypedNode String )
-fromNodeString env_ (Node range_ str) =
+fromNodeString : Meta -> Node String -> Result (List DeadEnd) ( Meta, TypedNode String )
+fromNodeString meta_ (Node range_ str) =
     let
-        lastEnv : Env
-        lastEnv =
-            env_ |> countLabel
+        lastMeta : Meta
+        lastMeta =
+            { meta_ | label = meta_.label + 1, range = range_ }
     in
-    Ok ( lastEnv, TypedNode { range = range_, type_ = Int, env = lastEnv } str )
+    Ok ( lastMeta, TypedNode lastMeta str )

@@ -4,7 +4,7 @@ import Elm.Syntax.Declaration exposing (Declaration(..))
 import Elm.Syntax.Node exposing (Node(..))
 import Parser exposing (DeadEnd, Problem(..))
 import Typed.Expression exposing (TypedExpression, TypedFunction, fromFunction, fromNodeExpression)
-import Typed.Node exposing (Env, Type(..), TypedNode(..), countLabel, env, type_)
+import Typed.Node exposing (Meta, Type(..), TypedNode(..), type_)
 import Typed.Pattern exposing (TypedPattern, fromNodePattern)
 
 
@@ -13,8 +13,8 @@ type TypedDeclaration
     | TypedFunctionDeclaration TypedFunction
 
 
-fromNodeDeclaration : Env -> Node Declaration -> Result (List DeadEnd) ( Env, TypedNode TypedDeclaration )
-fromNodeDeclaration env_ (Node range_ node) =
+fromNodeDeclaration : Meta -> Node Declaration -> Result (List DeadEnd) ( Meta, TypedNode TypedDeclaration )
+fromNodeDeclaration meta_ (Node range_ node) =
     let
         { row, column } =
             range_.start
@@ -22,46 +22,47 @@ fromNodeDeclaration env_ (Node range_ node) =
     case node of
         Destructuring pattern expr_ ->
             let
-                typedPattern : Result (List DeadEnd) ( Env, TypedNode TypedPattern )
+                typedPattern : Result (List DeadEnd) ( Meta, TypedNode TypedPattern )
                 typedPattern =
-                    fromNodePattern env_ pattern
+                    fromNodePattern meta_ pattern
 
-                parttenEnv : Result (List DeadEnd) Env
-                parttenEnv =
-                    typedPattern |> Result.map (\( e, _ ) -> e |> countLabel)
+                parttenMeta : Result (List DeadEnd) Meta
+                parttenMeta =
+                    typedPattern
+                        |> Result.map (Tuple.first >> (\meta__ -> { meta__ | label = meta__.label + 1 }))
 
-                typedExpression : Result (List DeadEnd) ( Env, TypedNode TypedExpression )
+                typedExpression : Result (List DeadEnd) ( Meta, TypedNode TypedExpression )
                 typedExpression =
-                    parttenEnv
-                        |> Result.andThen (\env__ -> fromNodeExpression env_ expr_)
+                    parttenMeta
+                        |> Result.andThen (\meta__ -> fromNodeExpression meta__ expr_)
 
-                exprEnv : Result (List DeadEnd) Env
-                exprEnv =
+                exprMeta : Result (List DeadEnd) Meta
+                exprMeta =
                     typedExpression |> Result.map (\( e, _ ) -> e)
 
-                lastEnv : Result (List DeadEnd) Env
-                lastEnv =
-                    exprEnv |> Result.map (\e -> e |> countLabel)
+                lastMeta : Result (List DeadEnd) Meta
+                lastMeta =
+                    exprMeta |> Result.map (\meta__ -> { meta__ | range = range_, label = meta__.label + 1 })
             in
             Result.map3
-                (\( _, ptrn ) env__ ( _, expr ) -> ( env__, TypedNode { range = range_, type_ = type_ expr, env = env__ } (TypedDestructuring ptrn expr) ))
+                (\( _, ptrn ) meta__ ( _, expr ) -> ( meta__, TypedNode meta__ (TypedDestructuring ptrn expr) ))
                 typedPattern
-                lastEnv
+                lastMeta
                 typedExpression
 
         FunctionDeclaration func ->
             let
-                typedFunction : Result (List DeadEnd) ( Env, TypedFunction )
+                typedFunction : Result (List DeadEnd) ( Meta, TypedFunction )
                 typedFunction =
-                    fromFunction env_ func
+                    fromFunction meta_ func
 
-                lastEnv : Result (List DeadEnd) Env
-                lastEnv =
-                    typedFunction |> Result.map (\( e, _ ) -> e |> countLabel)
+                lastMeta : Result (List DeadEnd) Meta
+                lastMeta =
+                    typedFunction |> Result.map (\( meta__, _ ) -> { meta__ | range = range_, label = meta__.label + 1 })
             in
             Result.map2
-                (\e ( _, f ) -> ( e, TypedNode { range = range_, type_ = Unit, env = e } (TypedFunctionDeclaration f) ))
-                lastEnv
+                (\meta__ ( _, f ) -> ( meta__, TypedNode meta__ (TypedFunctionDeclaration f) ))
+                lastMeta
                 typedFunction
 
         _ ->

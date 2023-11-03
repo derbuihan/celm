@@ -1,14 +1,12 @@
 module Generate exposing (generate)
 
-import Dict exposing (keys)
-import Graph exposing (AcyclicGraph, Graph, checkAcyclic, fromNodeLabelsAndEdgePairs, topologicalSort)
-import List.Extra exposing (elemIndex)
+import Dict
 import Parser exposing (DeadEnd, Problem(..))
 import Result.Extra as Result
 import Typed.Declaration exposing (TypedDeclaration(..))
 import Typed.Expression exposing (TypedExpression(..), TypedFunctionImplementation, TypedLetDeclaration(..))
 import Typed.File exposing (TypedFile)
-import Typed.Node exposing (Meta, TypedNode(..), env, meta, value)
+import Typed.Node exposing (TypedNode(..), meta, value)
 
 
 push : String
@@ -39,7 +37,8 @@ genNodeLetDeclaration (TypedNode meta_ decl) =
 
                         offset : Result (List DeadEnd) Int
                         offset =
-                            Dict.get name meta_.env.offsets
+                            Dict.get name meta_.variables
+                                |> Maybe.map (\varInfo -> varInfo.offset)
                                 |> Result.fromMaybe [ DeadEnd row column (Problem "Gen: Unknown variable") ]
 
                         expression : TypedNode TypedExpression
@@ -160,8 +159,9 @@ genNodeExpression (TypedNode meta_ expr) =
                 let
                     offset : Result (List DeadEnd) Int
                     offset =
-                        Dict.get name meta_.env.offsets
-                            |> Result.fromMaybe [ DeadEnd row column (Problem "Gen2: Unknown variable") ]
+                        Dict.get name meta_.variables
+                            |> Maybe.map (\varInfo -> varInfo.offset)
+                            |> Result.fromMaybe [ DeadEnd row column (Problem "Gen: Unknown variable") ]
                 in
                 Result.map
                     (\offset_ ->
@@ -185,7 +185,7 @@ genNodeExpression (TypedNode meta_ expr) =
                 endLabel : String
                 endLabel =
                     ".L.end."
-                        ++ (cond |> env |> .label |> String.fromInt)
+                        ++ (cond |> meta |> .label |> String.fromInt)
 
                 elseExpr : Result (List DeadEnd) String
                 elseExpr =
@@ -194,7 +194,7 @@ genNodeExpression (TypedNode meta_ expr) =
                 elseLabel : String
                 elseLabel =
                     ".L.else."
-                        ++ (else_ |> env |> .label |> String.fromInt)
+                        ++ (else_ |> meta |> .label |> String.fromInt)
             in
             Result.map3
                 (\cond_ then__ else__ ->

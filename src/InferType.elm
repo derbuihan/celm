@@ -3,12 +3,12 @@ module InferType exposing (inferType)
 import Elm.Syntax.File exposing (File)
 import Parser exposing (DeadEnd)
 import Typed.File exposing (TypedFile, fromFile)
-import Typed.Node exposing (initEnv)
+import Typed.Node exposing (initMeta)
 
 
 inferType : File -> Result (List DeadEnd) TypedFile
 inferType file =
-    case fromFile initEnv file of
+    case fromFile initMeta file of
         Ok typedFileWithFile ->
             let
                 ( _, typedFile ) =

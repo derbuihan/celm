@@ -1,8 +1,8 @@
-module Typed.Node exposing (Env, Meta, Type(..), TypedNode(..), addRequiredVariable, countLabel, env, getLastEnv, inferNodes, initEnv, insertOffset, meta, range, resetOffsets, resetRequiredVariables, type_, value)
+module Typed.Node exposing (Meta, Type(..), TypedNode(..), VarInfo, addRequiredVariable, getLastEnv, inferNodes, initMeta, insertVariable, meta, range, resetRequiredVariables, resetVariables, type_, value)
 
 import Dict
 import Elm.Syntax.Node exposing (Node)
-import Elm.Syntax.Range exposing (Range)
+import Elm.Syntax.Range as Range exposing (Range)
 import Parser exposing (DeadEnd)
 
 
@@ -12,17 +12,18 @@ type Type
     | Unit
 
 
-type alias Env =
-    { label : Int
-    , required_variables : Dict.Dict String Type
-    , offsets : Dict.Dict String Int
+type alias VarInfo =
+    { offset : Int
+    , type_ : Type
     }
 
 
 type alias Meta =
     { range : Range
     , type_ : Type
-    , env : Env
+    , label : Int
+    , required_variables : Dict.Dict String Type
+    , variables : Dict.Dict String VarInfo
     }
 
 
@@ -40,9 +41,19 @@ type_ (TypedNode m _) =
     m.type_
 
 
-env : TypedNode a -> Env
-env (TypedNode m _) =
-    m.env
+label : TypedNode a -> Int
+label (TypedNode m _) =
+    m.label
+
+
+required_variables : TypedNode a -> Dict.Dict String Type
+required_variables (TypedNode m _) =
+    m.required_variables
+
+
+variables : TypedNode a -> Dict.Dict String VarInfo
+variables (TypedNode m _) =
+    m.variables
 
 
 value : TypedNode a -> a
@@ -55,46 +66,54 @@ meta (TypedNode m _) =
     m
 
 
-initEnv : Env
-initEnv =
-    { label = 0
+initMeta : Meta
+initMeta =
+    { range = Range.empty
+    , type_ = Unit
+    , label = 0
     , required_variables = Dict.empty
-    , offsets = Dict.fromList []
+    , variables = Dict.fromList []
     }
 
 
-countLabel : Env -> Env
-countLabel env_ =
-    { env_ | label = env_.label + 1 }
+addRequiredVariable : String -> Meta -> Meta
+addRequiredVariable name meta_ =
+    let
+        type__ : Type
+        type__ =
+            meta_.type_
+    in
+    { meta_ | required_variables = Dict.insert name type__ meta_.required_variables }
 
 
-addRequiredVariable : String -> Type -> Env -> Env
-addRequiredVariable name t env_ =
-    { env_ | required_variables = Dict.insert name t env_.required_variables }
+resetRequiredVariables : Meta -> Meta
+resetRequiredVariables meta_ =
+    { meta_ | required_variables = Dict.empty }
 
 
-resetRequiredVariables : Env -> Env
-resetRequiredVariables env_ =
-    { env_ | required_variables = Dict.empty }
-
-
-insertOffset : String -> Env -> Env
-insertOffset name env_ =
+insertVariable : String -> Meta -> Meta
+insertVariable name meta_ =
     let
         offset : Int
         offset =
-            (1 + Dict.size env_.offsets) * 16
+            (1 + Dict.size meta_.variables) * 16
+
+        varInfo : VarInfo
+        varInfo =
+            { offset = offset
+            , type_ = meta_.type_
+            }
     in
-    { env_ | offsets = Dict.insert name offset env_.offsets }
+    { meta_ | variables = Dict.insert name varInfo meta_.variables }
 
 
-resetOffsets : Env -> Env
-resetOffsets env_ =
-    { env_ | offsets = Dict.fromList [] }
+resetVariables : Meta -> Meta
+resetVariables meta_ =
+    { meta_ | variables = Dict.fromList [] }
 
 
-inferNodes : (Env -> Node a -> Result (List DeadEnd) (TypedNode b)) -> (Env -> Env) -> Env -> List (Node a) -> Result (List DeadEnd) (List (TypedNode b))
-inferNodes fromNodeFunc updateEnv env_ nodes =
+inferNodes : (Meta -> Node a -> Result (List DeadEnd) (TypedNode b)) -> (Meta -> Meta) -> Meta -> List (Node a) -> Result (List DeadEnd) (List (TypedNode b))
+inferNodes fromNodeFunc updateMeta meta_ nodes =
     case nodes of
         [] ->
             Ok []
@@ -103,20 +122,20 @@ inferNodes fromNodeFunc updateEnv env_ nodes =
             let
                 typedNode : Result (List DeadEnd) (TypedNode b)
                 typedNode =
-                    fromNodeFunc env_ node
+                    fromNodeFunc meta_ node
             in
             case typedNode of
                 Ok typedNode_ ->
                     Result.map (\typedNodes_ -> typedNode_ :: typedNodes_)
-                        (inferNodes fromNodeFunc updateEnv (typedNode_ |> env |> updateEnv) nodes_)
+                        (inferNodes fromNodeFunc updateMeta (typedNode_ |> meta |> updateMeta) nodes_)
 
                 Err deadEnds ->
                     Err deadEnds
 
 
-getLastEnv : List (TypedNode a) -> Maybe Env
+getLastEnv : List (TypedNode a) -> Maybe Meta
 getLastEnv nodes =
     nodes
         |> List.reverse
         |> List.head
-        |> Maybe.map (\node -> node |> env)
+        |> Maybe.map (\node -> node |> meta)
