@@ -229,52 +229,11 @@ genNodeExpression (TypedNode meta_ expr) =
 
                 stack_size : Int
                 stack_size =
-                    (declarations
-                        |> List.length
-                    )
-                        * 16
-
-                variables =
-                    declarations
-                        |> List.map value
-                        |> List.map (\(TypedLetFunction func) -> func.declaration)
-                        |> List.map value
-                        |> List.map .name
-                        |> List.map value
-
-                dependences =
-                    declarations
-                        |> List.map value
-                        |> List.map (\(TypedLetFunction func) -> func.declaration)
-                        |> List.indexedMap
-                            (\i x ->
-                                x
-                                    |> meta
-                                    |> .env
-                                    |> .required_variables
-                                    |> keys
-                                    |> List.map (\y -> elemIndex y variables |> Maybe.map (\z -> ( z, i )))
-                            )
-                        |> List.concat
-                        |> List.filterMap identity
-
-                graph : Graph (TypedNode TypedLetDeclaration) ()
-                graph =
-                    fromNodeLabelsAndEdgePairs declarations dependences
-
-                acyclicGraph : Result (List DeadEnd) (AcyclicGraph (TypedNode TypedLetDeclaration) ())
-                acyclicGraph =
-                    checkAcyclic graph |> Result.mapError (\_ -> [ DeadEnd row column (Problem "Gen: Cyclic dependency") ])
-
-                sortedDeclaration : Result (List DeadEnd) (List (TypedNode TypedLetDeclaration))
-                sortedDeclaration =
-                    acyclicGraph
-                        |> Result.map topologicalSort
-                        |> Result.map (\nodes -> nodes |> List.map .node |> List.map .label)
+                    (declarations |> List.length) * 16
 
                 declarationsCode : Result (List DeadEnd) (List String)
                 declarationsCode =
-                    sortedDeclaration |> Result.andThen (Result.combineMap genNodeLetDeclaration)
+                    declarations |> Result.combineMap genNodeLetDeclaration
 
                 expressionCode : Result (List DeadEnd) String
                 expressionCode =

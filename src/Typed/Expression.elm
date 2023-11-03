@@ -1,13 +1,14 @@
 module Typed.Expression exposing (TypedExpression(..), TypedFunction, TypedFunctionImplementation, TypedLetDeclaration(..), fromFunction, fromNodeExpression, fromNodeLetDeclaration)
 
-import Elm.Syntax.Declaration exposing (Declaration)
+import Dict exposing (keys)
 import Elm.Syntax.Expression exposing (Expression(..), Function, FunctionImplementation, LetBlock, LetDeclaration(..))
 import Elm.Syntax.Infix exposing (InfixDirection)
 import Elm.Syntax.Node exposing (Node(..))
-import List.Extra as List
+import Graph exposing (AcyclicGraph, Graph, checkAcyclic, fromNodeLabelsAndEdgePairs, topologicalSort)
+import List.Extra as List exposing (elemIndex)
 import Parser exposing (DeadEnd, Problem(..))
 import Typed.ModuleName exposing (TypedModuleName)
-import Typed.Node exposing (Env, Type(..), TypedNode(..), addRequiredVariable, countLabel, env, getLastEnv, inferNodes, insertOffset, resetOffsets, resetRequiredVariables, type_, value)
+import Typed.Node exposing (Env, Type(..), TypedNode(..), addRequiredVariable, countLabel, insertOffset, resetRequiredVariables, type_, value)
 
 
 type TypedExpression
@@ -52,13 +53,18 @@ inferLetDeclarations env_ decls =
             case decl of
                 Node _ (LetFunction func) ->
                     let
-                        name : String
-                        name =
-                            func.declaration |> (\(Node _ decl_) -> decl_.name) |> (\(Node _ name_) -> name_)
+                        { declaration } =
+                            func
+
+                        (Node _ { name }) =
+                            declaration
+
+                        (Node _ variable_name) =
+                            name
 
                         typedDecl : Result (List DeadEnd) ( Env, TypedNode TypedLetDeclaration )
                         typedDecl =
-                            fromNodeLetDeclaration (env_ |> insertOffset name |> resetRequiredVariables) decl
+                            fromNodeLetDeclaration (env_ |> insertOffset variable_name |> resetRequiredVariables) decl
 
                         lastEnv : Result (List DeadEnd) Env
                         lastEnv =
@@ -78,28 +84,68 @@ inferLetDeclarations env_ decls =
                     Err [ DeadEnd 0 0 (Problem "Type: Destructuring is not supported") ]
 
 
+sortLetDeclarations : ( List Env, List (TypedNode TypedLetDeclaration) ) -> Result (List DeadEnd) (List (TypedNode TypedLetDeclaration))
+sortLetDeclarations ( envs, declarations ) =
+    let
+        variables : List String
+        variables =
+            declarations |> List.map (value >> (\(TypedLetFunction func) -> func.declaration) >> value >> .name >> value)
+
+        dependences : List ( Int, Int )
+        dependences =
+            envs
+                |> List.indexedMap (\i env_ -> env_ |> .required_variables |> keys |> List.map (\name -> elemIndex name variables |> Maybe.map (\j -> ( j, i ))))
+                |> List.concat
+                |> List.filterMap identity
+
+        graph : Graph (TypedNode TypedLetDeclaration) ()
+        graph =
+            fromNodeLabelsAndEdgePairs declarations dependences
+
+        acyclicGraph : Result (List DeadEnd) (AcyclicGraph (TypedNode TypedLetDeclaration) ())
+        acyclicGraph =
+            checkAcyclic graph |> Result.mapError (\_ -> [ DeadEnd 0 0 (Problem "Type: Cyclic dependency") ])
+
+        sortedDeclaration : Result (List DeadEnd) (List (TypedNode TypedLetDeclaration))
+        sortedDeclaration =
+            acyclicGraph |> Result.map topologicalSort |> Result.map (\nodes -> nodes |> List.map .node |> List.map .label)
+    in
+    sortedDeclaration
+
+
 fromLetBlock : Env -> LetBlock -> Result (List DeadEnd) ( Env, TypedLetBlock )
 fromLetBlock env_ letBlock =
     let
-        declarations : Result (List DeadEnd) ( List Env, List (TypedNode TypedLetDeclaration) )
-        declarations =
+        declarationsWithEnv : Result (List DeadEnd) ( List Env, List (TypedNode TypedLetDeclaration) )
+        declarationsWithEnv =
             inferLetDeclarations env_ letBlock.declarations |> Result.map List.unzip
 
         declsLastEnv : Result (List DeadEnd) Env
         declsLastEnv =
-            declarations |> Result.map (Tuple.first >> List.last >> Maybe.withDefault env_ >> resetRequiredVariables)
+            declarationsWithEnv |> Result.map (Tuple.first >> List.last >> Maybe.withDefault env_)
+
+        sortedDeclarations : Result (List DeadEnd) (List (TypedNode TypedLetDeclaration))
+        sortedDeclarations =
+            declarationsWithEnv |> Result.andThen sortLetDeclarations
+
+        offsets : Result (List DeadEnd) (Dict.Dict String Int)
+        offsets =
+            declsLastEnv |> Result.map .offsets
+
+        declsEnv : Result (List DeadEnd) Env
+        declsEnv =
+            Result.map2 (\env__ offsets_ -> { env__ | offsets = offsets_ }) declsLastEnv offsets
 
         expression : Result (List DeadEnd) ( Env, TypedNode TypedExpression )
         expression =
-            declsLastEnv
-                |> Result.andThen (\env__ -> fromNodeExpression env__ letBlock.expression)
+            declsEnv |> Result.andThen (\env__ -> fromNodeExpression env__ letBlock.expression)
 
         lastEnv : Result (List DeadEnd) Env
         lastEnv =
-            expression |> Result.map (Tuple.first >> resetRequiredVariables)
+            expression |> Result.map Tuple.first
     in
-    case ( lastEnv, declarations, expression ) of
-        ( Ok lastEnv_, Ok ( _, decls_ ), Ok ( _, expr_ ) ) ->
+    case ( lastEnv, sortedDeclarations, expression ) of
+        ( Ok lastEnv_, Ok decls_, Ok ( _, expr_ ) ) ->
             Ok ( lastEnv_, { declarations = decls_, expression = expr_ } )
 
         ( Err err, _, _ ) ->

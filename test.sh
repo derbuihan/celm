@@ -14,6 +14,7 @@ function test() {
         echo "---"
     else
         echo "ng $1 != $ret"
+        cat ${elm_file}
         exit 1
     fi
 
